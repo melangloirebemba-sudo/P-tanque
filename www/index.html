@@ -26,6 +26,13 @@
   canvas#fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:60}
   button{font:inherit;font-weight:800;border:none;color:var(--txt);cursor:pointer;background:none}
   .hidden{display:none!important}
+  .tpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
+  .tcard{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:7px;border-radius:12px;background:transparent;box-shadow:inset 0 0 0 1.5px var(--line);text-align:left}
+  .tcard img{width:100%;border-radius:7px;display:block}
+  .tcard b{font-size:14px;font-weight:900;line-height:1.1;margin-top:2px}
+  .tcard small{font-size:11px;color:var(--mute);font-weight:700}
+  button.tcard:active{box-shadow:inset 0 0 0 2px var(--cream)}
+  .tprev{display:block;width:180px;margin:10px auto 0;border-radius:8px}
   /* Écran de démarrage */
   #splash{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
           background:radial-gradient(ellipse at 50% 40%,#1f4224,#0e1712 70%);transition:opacity .55s ease, transform .55s ease}
@@ -297,7 +304,8 @@
   .pp{background:var(--panel)}
   .pp.on{box-shadow:inset 0 0 0 2px var(--cream);background:#2f352f}
   #msg{background:rgba(25,29,26,.92)}
-  .chip{background:rgba(25,29,26,.92)}
+  .chip{background:rgba(25,29,26,.92);font-size:11.5px;padding:6px 9px}
+  .chips{gap:4px;flex-wrap:wrap}
   .chip.on{box-shadow:inset 0 0 0 2px var(--cream);color:var(--cream)}
   .hold{background:var(--olive);color:var(--cream);box-shadow:0 3px 0 var(--olive-d);border-radius:14px}
   .hold.tir{background:var(--clay);color:var(--cream);box-shadow:0 3px 0 var(--clay-d)}
@@ -341,6 +349,8 @@
   <symbol id="i-curl-l" viewBox="0 0 24 24"><path d="M17 20c0-8-3.5-12.5-10-12.5"/><path d="M10 4.5 7 7.5l3 3"/></symbol>
   <symbol id="i-curl-r" viewBox="0 0 24 24"><path d="M7 20c0-8 3.5-12.5 10-12.5"/><path d="M14 4.5l3 3-3 3"/></symbol>
   <symbol id="i-line" viewBox="0 0 24 24"><path d="M12 20V5M8 8.5 12 4.5l4 4"/></symbol>
+  <symbol id="i-stand" viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 7v7M8.5 10.5l3.5-2 3.5 2M12 14l-3 7M12 14l3 7"/></symbol>
+  <symbol id="i-crouch" viewBox="0 0 24 24"><circle cx="11" cy="7" r="2"/><path d="M11 9.5v5l4 1.5-1 4.5M11 14.5l-4 2 1 3.5M11 11l4 1"/></symbol>
   <symbol id="i-ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M4.5 9.5c5 2 10 2 15 0M4.5 14.5c5-2 10-2 15 0"/></symbol>
 </svg>
 <canvas id="c"></canvas>
@@ -381,6 +391,7 @@
 <div id="safeProbe"></div>
 <div id="controls" class="hidden">
   <div class="chips">
+    <button id="cPos" class="chip"></button>
     <button id="cPortee" class="chip"></button>
     <button id="cEffet" class="chip"></button>
     <button id="cTir" class="chip"></button>
@@ -504,11 +515,14 @@
       <li><b>Demi-portée</b> : moitié en l'air, moitié en roulant.</li>
       <li><b>Plombée</b> : lancée haut, elle roule très peu.</li>
       <li><b>Effet</b> gauche ou droite : la boule tourne en roulant pour contourner un obstacle.</li>
-      <li><b>Tir au fer</b> : la boule tombe directement sur la cible. <b>Tir devant</b> : elle roule dedans.</li>
+      <li><b>Tir au fer</b> : la boule tombe directement sur la cible. <b>Tir sauté</b> : elle touche le sol juste devant et rebondit dessus (pour passer un cochonnet devant). <b>Tir devant</b> : elle roule dedans.</li>
+      <li><b>Debout</b> ou <b>accroupi</b> pour pointer : accroupi, la main est plus sûre et la boule part plus bas, mais elle va moins loin.</li>
     </ul>
     <h3>La partie</h3>
     <p>Le gagnant du tirage au sort choisit le terrain et lance le cochonnet, qui doit tomber entre 6 et 10 m. Sinon l'adversaire le place. L'équipe qui n'a pas le point joue. À la fin de la mène, chaque boule plus proche que la meilleure adverse vaut un point. Partie en 9, 11 ou 13.</p>
     <p><b>Carreau</b> : la boule tirée prend la place de la boule chassée. <b>Palet</b> : elle reste tout près et prend le point. <b>Reculée</b> : avec l'effet rétro, elle revient en arrière après le choc. Le carreau demande un tir <b>au fer</b> bien droit, et même alors il n'est pas garanti.</p>
+    <h3>Les terrains</h3>
+    <div class="tpick" id="howTerrains"></div>
     <h3>Tir de précision</h3>
     <p>5 ateliers × 4 distances = 20 tirs, 100 points maximum. L'impact doit être dans le cercle (et après l'obstacle pour les ateliers 2 et 4).</p>
     <ul>
@@ -537,7 +551,7 @@
   <p id="tossVs" class="lead" style="font-size:17px;margin:0"></p>
   <canvas id="tossCv" width="220" height="220"></canvas>
   <p id="tossRes" class="big" style="font-size:22px;min-height:28px"></p>
-  <div class="panel hidden" id="tossPick"><div class="field"><label id="tossLbl"></label><div class="seg" id="segToss"></div></div></div>
+  <div class="panel hidden" id="tossPick" style="max-width:640px"><div class="field"><label id="tossLbl"></label><div class="tpick" id="segToss"></div></div></div>
   <button id="tossGo" class="btn hidden">Commencer le match</button>
 </div>
 
@@ -582,15 +596,21 @@ const TEAMS = [
   {n: 'MAIN BLEU', c: '#1565c0'}, {n: 'Nsaka TI', c: '#9e9e9e'}
 ];
 const TERRAINS = [
-  {n: 'Gravier', d: 'classique', dec: 2.2, base: ['#c49a62', '#d2ab74'], border: '#6b4423', bump: 0},
-  {n: 'Terre battue', d: 'rapide', dec: 1.6, base: ['#a5553a', '#bb6a47'], border: '#5a3a22', bump: 0},
-  {n: 'Sable', d: 'lent', dec: 3.3, base: ['#dcc58e', '#ead7a5'], border: '#7a5a34', bump: 0},
-  {n: 'Herbe', d: 'irrégulier', dec: 2.7, base: ['#5b8a3b', '#6e9f48'], border: '#4e3420', bump: 0.6}
+  {n: 'Gravier', d: 'classique', dec: 2.2, base: ['#c49a62', '#d2ab74'], border: '#6b4423', bump: 0.22},
+  {n: 'Terre battue', d: 'rapide', dec: 1.6, base: ['#a5553a', '#bb6a47'], border: '#5a3a22', bump: 0.12},
+  {n: 'Sable', d: 'lent', dec: 3.3, base: ['#dcc58e', '#ead7a5'], border: '#7a5a34', bump: 0.18},
+  {n: 'Herbe', d: 'irrégulier', dec: 2.7, base: ['#5b8a3b', '#6e9f48'], border: '#4e3420', bump: 0.6, blades: true},
+  // terre mouillée : ça glisse, l'effet tourne plus fort et l'effet rétro accroche moins
+  {n: 'Terre glissante', d: 'ça glisse', dec: 1.05, base: ['#5d4838', '#6c5544'], border: '#4a3020', bump: 0.06, spinMul: 1.8, grip: 0.5, wet: true},
+  // terrain qui penche vers la droite (vu du cercle) : les boules dérivent en roulant
+  {n: 'En pente', d: 'penche à droite', dec: 2.2, base: ['#c9a46c', '#d6b27c'], border: '#6b4423', bump: 0.18, slope: [0.42, 0]},
+  // béton : dur et lisse, les boules rebondissent en retombant et roulent loin
+  {n: 'Béton', d: 'dur, ça rebondit', dec: 1.3, base: ['#a3a39d', '#b3b3ad'], border: '#5f5f5a', bump: 0.03, bounce: 0.38, concrete: true}
 ];
 const cfg = {mode: 'ai', team: [0, 1], terrain: 0, win: 13, diff: 1};
 const opts = Object.assign({sound: true, vib: true, gauge: 1.4}, (() => { try { return JSON.parse(localStorage.getItem('petanque_opts')) || {}; } catch (e) { return {}; } })());
 const saveOpts = () => { try { localStorage.setItem('petanque_opts', JSON.stringify(opts)); } catch (e) {} };
-let paused = false, flow = {restart: null, quit: null};
+let paused = false, flow = {restart: null, quit: null}, lastTeam = 0, crouchAnim = false;
 
 // ---------- Monde (mètres) ----------
 const W = 4, L = 13;
@@ -777,24 +797,67 @@ function resize() {
 }
 
 // ---------- Décor : sol rendu par lancer de rayons, ciel, haie d'arbres, planches en relief ----------
+// Texture d'un terrain vue du dessus (sert au jeu et aux aperçus)
+function terrainTexture(t, tw, th, TPX) {
+  const tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
+  const tg = tc.getContext('2d');
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const bg = tg.createLinearGradient(0, 0, 0, th); bg.addColorStop(0, t.base[0]); bg.addColorStop(1, t.base[1]);
+  tg.fillStyle = bg; tg.fillRect(0, 0, tw, th);
+  const dens = t.concrete ? 3 : 7;
+  for (let i = 0; i < tw * th / dens; i++) {
+    const v = rnd(), x = rnd() * tw, y = rnd() * th, r = (t.concrete ? .3 : .5) + rnd() * (t.concrete ? .7 : 1.8);
+    tg.fillStyle = v < .33 ? 'rgba(60,40,20,' + (t.concrete ? .12 : .3) + ')' : v < .66 ? 'rgba(255,248,225,' + (t.concrete ? .12 : .3) + ')' : 'rgba(25,20,12,.2)';
+    if (t.blades) tg.fillRect(x, y, r * .7, r * 3); else { tg.beginPath(); tg.arc(x, y, r, 0, 7); tg.fill(); }
+  }
+  for (let i = 0; i < 40; i++) {   // traces de pas et de boules
+    tg.fillStyle = 'rgba(0,0,0,.05)'; tg.beginPath(); tg.ellipse(rnd() * tw, rnd() * th, 6 + rnd() * 14, 4 + rnd() * 8, rnd() * 3, 0, 7); tg.fill();
+  }
+  if (t.wet) {   // flaques qui brillent
+    for (let i = 0; i < 26; i++) {
+      tg.fillStyle = 'rgba(200,215,225,' + (0.06 + rnd() * 0.08) + ')';
+      tg.beginPath(); tg.ellipse(rnd() * tw, rnd() * th, (0.15 + rnd() * 0.4) * TPX, (0.08 + rnd() * 0.2) * TPX, rnd() * 3, 0, 7); tg.fill();
+    }
+  }
+  if (t.concrete) {   // joints de dilatation et fissures
+    tg.strokeStyle = 'rgba(60,60,55,.45)'; tg.lineWidth = Math.max(1, TPX * 0.02);
+    for (let y = 2; y < th / TPX; y += 2) { tg.beginPath(); tg.moveTo(0, y * TPX); tg.lineTo(tw, y * TPX); tg.stroke(); }
+    tg.strokeStyle = 'rgba(50,50,45,.35)'; tg.lineWidth = Math.max(.6, TPX * 0.008);
+    for (let i = 0; i < 6; i++) { let x = rnd() * tw, y = rnd() * th; tg.beginPath(); tg.moveTo(x, y); for (let k = 0; k < 5; k++) { x += (rnd() - .5) * TPX * .5; y += rnd() * TPX * .4; tg.lineTo(x, y); } tg.stroke(); }
+  }
+  if (t.slope) {   // la pente : un côté plus sombre, et des flèches tracées à la craie
+    const sg = tg.createLinearGradient(0, 0, tw, 0); sg.addColorStop(0, 'rgba(255,245,220,.1)'); sg.addColorStop(1, 'rgba(0,0,0,.16)');
+    tg.fillStyle = sg; tg.fillRect(0, 0, tw, th);
+    tg.strokeStyle = 'rgba(255,255,255,.4)'; tg.lineWidth = Math.max(1.5, TPX * 0.025); tg.lineCap = 'round';
+    for (let y = 1.6; y < th / TPX; y += 2.6) {
+      const cx = tw * 0.82, cy = y * TPX, s = TPX * 0.22;
+      tg.beginPath(); tg.moveTo(cx - s * 1.6, cy); tg.lineTo(cx + s, cy); tg.moveTo(cx + s * .2, cy - s * .7); tg.lineTo(cx + s, cy); tg.lineTo(cx + s * .2, cy + s * .7); tg.stroke();
+    }
+  }
+  return tc;
+}
+// Aperçu d'un terrain (petite image avec ses planches)
+const thumbCache = {};
+function terrainThumb(i) {
+  if (thumbCache[i]) return thumbCache[i];
+  const t = TERRAINS[i], TP = 64, w = Math.round(3.2 * TP), h = Math.round(1.8 * TP), bw = 10;
+  const c = document.createElement('canvas'); c.width = w + 2 * bw; c.height = h + 2 * bw;
+  const g = c.getContext('2d');
+  g.fillStyle = '#7a4f2a'; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(bw - 3, bw - 3, w + 6, h + 6);
+  g.drawImage(terrainTexture(t, w, h, TP), bw, bw);
+  // quelques boules pour l'échelle
+  const ball = (x, y, r, a, b) => { g.fillStyle = a; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.fillStyle = b; g.beginPath(); g.arc(x + r * .25, y + r * .2, r * .72, 0, 7); g.fill(); };
+  ball(bw + w * .62, bw + h * .48, 7, '#a9b1b4', '#868f93'); ball(bw + w * .7, bw + h * .58, 7, '#a8774b', '#8a5f39'); ball(bw + w * .66, bw + h * .4, 3.5, '#d9822b', '#b8661c');
+  return (thumbCache[i] = c.toDataURL('image/png'));
+}
+
 function makeGravel() {
   const t = T(), k = Math.min(dpr, 1.5), Wd = Math.ceil(cw * k), Hd = Math.ceil(ch * k);
   gravel = document.createElement('canvas'); gravel.width = Wd; gravel.height = Hd;
   const g = gravel.getContext('2d');
   // texture du terrain vue du dessus
-  const TPX = 90, tw = W * TPX, th = L * TPX, tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
-  const tg = tc.getContext('2d');
-  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const bg = tg.createLinearGradient(0, 0, 0, th); bg.addColorStop(0, t.base[0]); bg.addColorStop(1, t.base[1]);
-  tg.fillStyle = bg; tg.fillRect(0, 0, tw, th);
-  for (let i = 0; i < tw * th / 7; i++) {
-    const v = rnd(), x = rnd() * tw, y = rnd() * th, r = .5 + rnd() * 1.8;
-    tg.fillStyle = v < .33 ? 'rgba(60,40,20,.3)' : v < .66 ? 'rgba(255,248,225,.3)' : 'rgba(25,20,12,.25)';
-    if (t.bump) tg.fillRect(x, y, r * .7, r * 3); else { tg.beginPath(); tg.arc(x, y, r, 0, 7); tg.fill(); }
-  }
-  for (let i = 0; i < 40; i++) {   // traces de pas et de boules
-    tg.fillStyle = 'rgba(0,0,0,.05)'; tg.beginPath(); tg.ellipse(rnd() * tw, rnd() * th, 6 + rnd() * 14, 4 + rnd() * 8, rnd() * 3, 0, 7); tg.fill();
-  }
+  const TPX = 90, tw = W * TPX, th = L * TPX, tc = terrainTexture(t, tw, th, TPX), tg = tc.getContext('2d');
   const T_ = tg.getImageData(0, 0, tw, th).data;
   const img = g.createImageData(Wd, Hd), D = img.data, C = CAM;
   const hash = (a, b) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
@@ -969,6 +1032,7 @@ function updateHUD() {
   if (!at) $('t1').style.visibility = '';
   $('cPortee').classList.toggle('hidden', phase !== 'aim' || at);
   $('cEffet').classList.toggle('hidden', phase !== 'aim' || at);
+  $('cPos').classList.toggle('hidden', phase !== 'aim' || at);
   $('cTir').classList.toggle('hidden', phase !== 'aim');
   $('bPointer').classList.toggle('hidden', at);
   $('bTir').classList.toggle('hidden', phase !== 'aim');
@@ -1067,8 +1131,8 @@ function tossDone(w) {
     $('tossLbl').textContent = tName(w) + ', choisissez le terrain';
     const el = $('segToss'); el.innerHTML = '';
     TERRAINS.forEach((t, i) => {
-      const b = document.createElement('button');
-      b.innerHTML = t.n + '<small>' + t.d + '</small>';
+      const b = document.createElement('button'); b.className = 'tcard';
+      b.innerHTML = '<img src="' + terrainThumb(i) + '" alt=""><b>' + t.n + '</b><small>' + t.d + '</small>';
       b.onclick = () => startMatch(w, i);
       el.appendChild(b);
     });
@@ -1076,7 +1140,7 @@ function tossDone(w) {
   } else {
     const i = Math.floor(Math.random() * TERRAINS.length);
     later(() => {
-      $('tossRes').innerHTML += '<br><span style="font-size:16px;font-weight:600">Il choisit le terrain : <b>' + TERRAINS[i].n + '</b> (' + TERRAINS[i].d + ')</span>';
+      $('tossRes').innerHTML += '<br><span style="font-size:16px;font-weight:600">Il choisit le terrain : <b>' + TERRAINS[i].n + '</b> (' + TERRAINS[i].d + ')</span><img class="tprev" src="' + terrainThumb(i) + '" alt="">';
       $('tossGo').onclick = () => startMatch(w, i);
       $('tossGo').classList.remove('hidden');
     }, 700);
@@ -1097,31 +1161,41 @@ const PORTEES = {
   demi:     {n: 'Demi-portée', f: 0.5, H0: 0.25, Hk: 0.1},
   plombee:  {n: 'Plombée', f: 0.88, H0: 0.35, Hk: 0.28}
 };
-const TIRS = {fer: {n: 'Au fer', back: 0.25}, devant: {n: 'Devant', back: 0.9}};
+const TIRS = {fer: {n: 'Au fer', back: 0.25}, sautee: {n: 'Sauté', back: 0.72}, devant: {n: 'Devant', back: 0.9}};
 
 function doThrow(dx, dy, d, type, human, opt = {}) {
   const isJack = phase === 'cochonnet', t = T(), tir = type === 'tir' && !isJack;
   if (human && tir) {                       // le tir demande de la précision
-    const a = Math.atan2(dx, dy) + gauss() * 0.02;
-    dx = Math.sin(a); dy = Math.cos(a); d += gauss() * 0.08;
+    const a = Math.atan2(dx, dy) + gauss() * (opt.tir === 'sautee' ? 0.024 : 0.02);
+    dx = Math.sin(a); dy = Math.cos(a); d += gauss() * (opt.tir === 'sautee' ? 0.1 : 0.08);
+  }
+  const crouch = !tir && !isJack && opt.stance === 'accroupi';
+  if (human && !tir) {                      // le point aussi : la main n'est jamais parfaite
+    const sa = isJack ? 0.01 : crouch ? 0.007 : 0.011, sd = isJack ? 0.04 : crouch ? 0.03 : 0.045;
+    const a = Math.atan2(dx, dy) + gauss() * sa;
+    dx = Math.sin(a); dy = Math.cos(a); d *= 1 + gauss() * sd;
   }
   const o = {x: CIRCLE.x, y: CIRCLE.y, vx: 0, vy: 0, h: 0, dead: false,
     team: isJack ? -1 : shooterTeam(), r: isJack ? JR : BR, m: isJack ? 0.15 : 1, dec: isJack ? t.dec * 1.27 : t.dec};
   let land, roll, H, plomb = false;
   if (!tir) {
     const pr = isJack ? {f: 0.6, H0: 0.25, Hk: 0.1} : PORTEES[opt.portee || 'demi'];
-    land = d * pr.f; roll = d - land; H = pr.H0 + land * pr.Hk; plomb = pr === PORTEES.plombee;
+    land = d * pr.f; roll = d - land; H = (pr.H0 + land * pr.Hk) * (crouch ? 0.7 : 1); plomb = pr === PORTEES.plombee;
     if (!isJack && opt.spin) o.spin = opt.spin;          // effet (vice) : la boule tourne en roulant
   } else {
     const ts = TIRS[opt.tir || 'fer'];
-    land = Math.max(0.4, d - ts.back); roll = TIR_ROLL; H = 0.25 + land * (opt.tir === 'devant' ? 0.02 : 0.05);
+    land = Math.max(0.4, d - ts.back); roll = TIR_ROLL;
+    // vraies cloches de tir : au fer ≈ 1,5 m au sommet à 8 m, sauté un peu plus bas, devant presque tendu
+    H = opt.tir === 'devant' ? 0.3 + land * 0.04 : opt.tir === 'sautee' ? 0.45 + land * 0.09 : 0.6 + land * 0.12;
   }
   const refDec = human ? (isJack ? REF_J : REF_B) : o.dec;
   const v = Math.sqrt(2 * (tir ? o.dec : refDec) * roll);
   o.air = {sx: o.x, sy: o.y, ex: o.x + dx * land, ey: o.y + dy * land, t: 0,
-    T: 0.35 + land * (tir ? 0.06 : plomb ? 0.11 : 0.08), H, dx, dy, v, tir, plomb};
+    T: 0.35 + land * (tir ? (opt.tir === 'devant' ? 0.05 : 0.075) : plomb ? 0.11 : 0.08), H, dx, dy, v, tir, plomb, kind: tir ? (opt.tir || 'fer') : 'point'};
+  if (tir && opt.tir === 'sautee') o.air.hop = {dist: 0.47, H: 0.13, keep: 1};
+  lastTeam = isJack ? lastTeam : current; crouchAnim = crouch;
   if (tir) {
-    o.shot = {hit: null};
+    o.shot = {hit: null, kind: opt.tir || 'fer'};
     lastShot = {ball: o, before: new Map(balls.filter(b => !b.dead).map(b => [b, {x: b.x, y: b.y}]))};
   } else lastShot = isJack ? null : {ball: o, pointer: true};
   if (isJack) { jack = o; throwingJack = true; } else { balls.push(o); remaining[current]--; }
@@ -1201,17 +1275,27 @@ function placeJack(x, y) {
   updateHUD(); scheduleAI();
 }
 
+const TIE = 0.004;   // en dessous de 4 mm d'écart, les deux boules sont « nulles » (égalité)
+const cm = d => Math.max(0, Math.round(d * 100));
 function decideNext() {
   const best = closest();
-  let holder = null;
-  if (best[0] && best[1]) holder = best[0].d < best[1].d ? 0 : 1;
+  let holder = null, tie = false;
+  if (best[0] && best[1]) { tie = Math.abs(best[0].d - best[1].d) < TIE; holder = tie ? null : best[0].d < best[1].d ? 0 : 1; }
   else if (best[0]) holder = 0; else if (best[1]) holder = 1;
   let t;
-  if (holder === null) t = remaining[0] > remaining[1] ? 0 : remaining[1] > remaining[0] ? 1 : first;
+  if (tie) t = lastTeam;                              // boules nulles : l'équipe qui vient de jouer rejoue
+  else if (holder === null) t = remaining[0] > remaining[1] ? 0 : remaining[1] > remaining[0] ? 1 : first;
   else t = 1 - holder;
   if (remaining[t] === 0) t = 1 - t;
   current = t; phase = 'aim'; aimDir = {dx: 0, dy: 1};
-  const txt = holder === null ? 'Aucune boule en jeu' : tName(holder) + ' tient le point (' + Math.max(0, Math.round(best[holder].d * 100)) + ' cm)';
+  let txt;
+  if (tie) txt = 'Égalité parfaite, boules nulles (' + cm(best[0].d) + ' cm)';
+  else if (holder === null) txt = 'Aucune boule en jeu';
+  else {
+    const o = best[1 - holder], gap = o ? o.d - best[holder].d : null;
+    txt = tName(holder) + ' tient le point (' + cm(best[holder].d) + ' cm' + (gap !== null ? ', ' + (gap < 0.01 ? 'moins d\'1 cm' : cm(gap) + ' cm') + ' d\'avance' : '') + ')';
+    if (gap !== null && gap < 0.02) showPop('Mesure serrée !', '#f2ebdd');
+  }
   setMsg(txt + ' - à ' + tName(t) + ' de jouer');
   updateHUD(); scheduleAI();
 }
@@ -1230,10 +1314,11 @@ function endMene() {
     d[0].sort((a, b) => a.d - b.d); d[1].sort((a, b) => a.d - b.d);
     const b0 = d[0].length ? d[0][0].d : Infinity, b1 = d[1].length ? d[1][0].d : Infinity;
     if (b0 === Infinity && b1 === Infinity) text = 'Aucune boule sur le terrain : mène nulle.';
+    else if (Math.abs(b0 - b1) < TIE) text = 'Égalité parfaite entre les deux meilleures boules : mène nulle.';
     else {
       winner = b0 < b1 ? 0 : 1;
       const other = winner === 0 ? b1 : b0;
-      scoring = d[winner].filter(x => x.d < other).map(x => x.b);
+      scoring = d[winner].filter(x => x.d < other - TIE).map(x => x.b);
       pts = scoring.length;
       text = tName(winner) + ' marque ' + pts + ' point' + (pts > 1 ? 's' : '') + '.';
     }
@@ -1275,19 +1360,61 @@ function aiPlay() {
     return doThrow(Math.sin(a), Math.cos(a), d, 'pointer', false);
   }
   if (phase !== 'aim') return;
-  const best = closest(), opp = best[0], mine = best[1];
-  let type = 'pointer', tx = jack.x, ty = jack.y;
-  if (opp && (!mine || mine.d > opp.d) && opp.d < 0.35 && Math.random() < 0.55) { type = 'tir'; tx = opp.b.x; ty = opp.b.y; }
-  let d = Math.hypot(tx - CIRCLE.x, ty - CIRCLE.y), ang = Math.atan2(tx - CIRCLE.x, ty - CIRCLE.y);
+  const best = closest(), opp = best[0], mine = best[1], t = T();
   const m = [1.7, 1, 0.55][cfg.diff];   // niveau de l'ordinateur
+  let type = 'pointer', tx = jack.x, ty = jack.y, opt = {portee: 'demi'};
+  // combien de points l'adversaire marquerait si la mène s'arrêtait là
+  const oppPoints = opp ? balls.filter(b => !b.dead && b.team === 0 && (!mine || measure(b) < mine.d)).length : 0;
+  const myLead = mine && (!opp || mine.d < opp.d);
+  if (opp && !myLead && remaining[0] === 0 && remaining[1] >= 1 && oppPoints >= 2 && Math.random() < 0.6 + 0.15 * cfg.diff) {
+    // astuce : l'adversaire n'a plus de boules et va marquer gros -> on tire le cochonnet hors du terrain
+    type = 'tir'; opt = {tir: 'fer'};
+  } else if (opp && !myLead) {
+    // l'adversaire tient le point : plus sa boule est collée au cochonnet, plus on a intérêt à tirer
+    const close = opp.d < 0.1 ? 0.85 : opp.d < 0.25 ? 0.65 : opp.d < 0.45 ? 0.35 : 0.08;
+    const keen = close * (remaining[1] >= remaining[0] ? 1 : 0.75) * (oppPoints >= 2 ? 1.15 : 1);
+    if (Math.random() < keen) {
+      type = 'tir'; tx = opp.b.x; ty = opp.b.y;
+      const jackInFront = jack.y < opp.b.y && Math.abs(jack.x - opp.b.x) < 0.25 && opp.b.y - jack.y < 0.6;
+      opt = {tir: jackInFront ? 'sautee' : 'fer'};
+    }
+  }
+  if (type === 'pointer') {
+    // une boule sur le chemin ? on passe par-dessus en plombée ; terrain qui roule trop : plombée aussi
+    const L_ = Math.hypot(tx - CIRCLE.x, ty - CIRCLE.y), ux = (tx - CIRCLE.x) / L_, uy = (ty - CIRCLE.y) / L_;
+    const blocked = balls.some(b => { if (b.dead) return false; const px = b.x - CIRCLE.x, py = b.y - CIRCLE.y, along = px * ux + py * uy, side = Math.abs(px * uy - py * ux); return along > L_ * 0.45 && along < L_ - 0.25 && side < 0.3; });
+    opt = {portee: blocked || t.wet || t.concrete ? 'plombee' : t.dec > 3 ? 'demi' : 'demi'};
+    if (myLead && remaining[1] > 1) ty -= 0.08;   // on tient déjà le point : on assure un peu court
+    // la pente : on vise plus haut sur la pente pour que la boule redescende vers le cochonnet
+    if (t.slope) {
+      const pr = PORTEES[opt.portee], rollD = L_ * (1 - pr.f), v = Math.sqrt(2 * t.dec * rollD), tr = v / t.dec;
+      tx -= 0.5 * t.slope[0] * tr * tr * 0.85;
+    }
+  }
+  let d = Math.hypot(tx - CIRCLE.x, ty - CIRCLE.y), ang = Math.atan2(tx - CIRCLE.x, ty - CIRCLE.y);
+  if (type === 'pointer' && t.bounce) {   // béton : on tient compte du rebond pour ne pas aller trop loin ou trop court
+    const pr = PORTEES[opt.portee], est = dd => { const l = dd * pr.f, roll = dd - l, H = pr.H0 + l * pr.Hk; return H > 0.15 ? l + Math.min(1.3, H * t.bounce * 1.5) + roll * 0.7744 : dd; };
+    let dd = d; for (let k = 0; k < 8; k++) dd += (d - est(dd)) * 0.8;
+    d = dd;
+  }
   if (type === 'pointer') { d += gauss() * 0.35 * m; ang += gauss() * 0.03 * m; } else { d += gauss() * 0.1 * m; ang += gauss() * 0.02 * m; }
-  doThrow(Math.sin(ang), Math.cos(ang), Math.min(MAXD, Math.max(0.5, d)), type, false);
+  doThrow(Math.sin(ang), Math.cos(ang), Math.min(MAXD, Math.max(0.5, d)), type, false, opt);
 }
 
 // ---------- Physique ----------
 function land(o) {
   const A = o.air;
-  if (o.shot) o.shot.impact = {x: A.ex, y: A.ey};
+  if (o.shot && !o.shot.impact) o.shot.impact = {x: A.ex, y: A.ey};   // le premier point de chute compte
+  // Tir sauté : la boule touche le sol juste avant la cible et rebondit dessus.
+  // Béton : toute boule qui retombe d'assez haut rebondit avant de rouler.
+  const hop = A.hop || (!A.second && T().bounce && A.H > 0.15 ? {dist: Math.min(1.3, A.H * T().bounce * 1.5), H: A.H * T().bounce * 0.45, keep: 0.88} : null);
+  if (hop && !A.second) {
+    thud(Math.min(1, A.H)); dust(A.ex, A.ey, 6);
+    if (out(o)) { o.dead = true; o.air = null; return; }
+    o.air = {sx: A.ex, sy: A.ey, ex: A.ex + A.dx * hop.dist, ey: A.ey + A.dy * hop.dist, t: 0, T: 0.12 + hop.dist * 0.16, H: hop.H,
+      dx: A.dx, dy: A.dy, v: A.v * (hop.keep || 1), tir: A.tir, plomb: false, second: true, kind: A.kind};
+    return;
+  }
   o.air = null; o.h = 0; o.vx = A.dx * A.v; o.vy = A.dy * A.v;
   if (A.plomb) {   // une plombée retombe de haut : petit rebond imprévisible, mais elle roule peu
     const a = gauss() * 0.12, c = Math.cos(a), s = Math.sin(a);
@@ -1323,7 +1450,8 @@ function step(h) {
       const sp = Math.hypot(o.vx, o.vy);
       if (sp > 0) {
         if (bump && sp > 0.05) { const k = gauss() * bump * h * 3; o.vx += -o.vy / sp * k; o.vy += o.vx / sp * k; }
-        if (o.spin && sp > 0.05) { const k = o.spin * 0.45 * h; const lx = -o.vy / sp, ly = o.vx / sp; o.vx += lx * k; o.vy += ly * k; }
+        if (o.spin && sp > 0.05) { const k = o.spin * 0.45 * h * (T().spinMul || 1); const lx = -o.vy / sp, ly = o.vx / sp; o.vx += lx * k; o.vy += ly * k; }
+        if (T().slope) { o.vx += T().slope[0] * h; o.vy += T().slope[1] * h; }   // la pente entraîne la boule qui roule
         const sp2 = Math.hypot(o.vx, o.vy);
         let ns = sp2 - o.dec * h; if (ns < 0.01) ns = 0;
         o.vx *= ns / sp2; o.vy *= ns / sp2;
@@ -1365,7 +1493,8 @@ function collide(a, b) {
         // Tir qui roule dans la boule : pas d'effet rétro, elle suit derrière.
         const ux = sg * nx, uy = sg * ny, vin = sv * q;
         const tx = s.vx - (s.vx * ux + s.vy * uy) * ux, ty = s.vy - (s.vx * ux + s.vy * uy) * uy;
-        const f = s.shot.direct ? 0.12 + 0.22 * gauss() : 0.5 + 0.12 * gauss();
+        const slip = T().grip ? (1 - T().grip) * 0.3 : 0;   // sur terrain glissant, l'effet rétro accroche moins
+        const f = s.shot.direct ? (s.shot.kind === 'sautee' ? 0.26 : 0.12) + slip + 0.22 * gauss() : 0.5 + 0.12 * gauss();
         s.vx = tx + ux * f * vin; s.vy = ty + uy * f * vin;
         s.shot.recul = f < -0.03;
         s.shot.dir = {x: ux, y: uy};
@@ -1489,6 +1618,7 @@ function heldBall(x, y, sc) {
   ballAt(x, y, Math.max((isJ ? JR : BR) * sc * 1.08, isJ ? 3 : 5), isJ ? -1 : shooterTeam());
 }
 
+const isCrouched = () => cfg.mode !== 'atelier' && (anim ? crouchAnim : phase === 'aim' && !isAITurn() && stance === 'accroupi' && !(charge && charge.type === 'tir'));
 function drawPlayer() {
   if (!scores) return;
   const shirt = tCol(current), skin = '#7a4a2a';
@@ -1500,6 +1630,7 @@ function drawPlayer() {
     const ang = canAim() ? Math.atan2(aimDir.dx, aimDir.dy) : lastAng;
     const arm = armState(false);
     ctx.save(); ctx.translate(c.X, fy); ctx.rotate(Math.max(-0.9, Math.min(0.9, ang)) * 0.6);
+    if (isCrouched()) ctx.scale(1.08, 0.68);
     ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, 0, 2.4 * u, 0.8 * u, 0, 0, 7); ctx.fill();
     ctx.fillStyle = '#2b2b33';
     ctx.fillRect(-1.25 * u, -4.2 * u, 0.95 * u, 4 * u); ctx.fillRect(0.3 * u, -4.2 * u, 0.95 * u, 4 * u);
@@ -1524,6 +1655,7 @@ function drawPlayer() {
     const u = Math.max(c.s * 0.15, 3.5), fx = c.X - CR * c.s * 0.2, fy = c.Y + 0.2 * u;
     const arm = armState(true);
     ctx.save(); ctx.translate(fx, fy);
+    if (isCrouched()) ctx.scale(1.1, 0.66);
     ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, 0, 2.2 * u, 0.6 * u, 0, 0, 7); ctx.fill();
     // jambes (légèrement fléchies)
     ctx.strokeStyle = '#2b2b33'; ctx.lineWidth = 0.9 * u;
@@ -1590,6 +1722,16 @@ function draw() {
   const objs = balls.slice(); if (jack) objs.push(jack);
   objs.filter(o => !o.dead && !o.air).forEach(drawObj);
 
+  if (cfg.mode !== 'atelier' && (phase === 'aim' || phase === 'menEnd') && jack && !jack.dead) {
+    const best = closest();
+    ctx.font = '800 11px Nunito, system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const tm of [0, 1]) if (best[tm]) {
+      const q = P3(best[tm].b.x, best[tm].b.y, best[tm].b.r * 2 + 0.12), txt = cm(best[tm].d) + ' cm', w = ctx.measureText(txt).width + 10;
+      ctx.fillStyle = 'rgba(25,29,26,.82)'; ctx.fillRect(q.X - w / 2, q.Y - 8, w, 16);
+      ctx.fillStyle = tCol(tm); ctx.fillRect(q.X - w / 2, q.Y - 8, 3, 16);
+      ctx.fillStyle = '#f2ebdd'; ctx.fillText(txt, q.X + 1, q.Y + 1);
+    }
+  }
   if (cfg.mode !== 'atelier' && phase === 'aim' && jack) {
     const best = closest(); let hb;
     if (best[0] && best[1]) hb = best[0].d < best[1].d ? best[0] : best[1]; else hb = best[0] || best[1];
@@ -1709,7 +1851,8 @@ function holdButton(btn, type) {
     const c = charge; charge = null;
     if (!canAim() || c.pow < 0.03) return;
     lastPow = c.pow;
-    doThrow(aimDir.dx, aimDir.dy, Math.max(0.5, c.pow * MAXD), c.type, true, {portee, spin: effet, tir: tirStyle});
+    const reach = c.type === 'pointer' && phase === 'aim' && stance === 'accroupi' ? 0.82 : 1;   // accroupi : plus précis mais moins loin
+    doThrow(aimDir.dx, aimDir.dy, Math.max(0.5, c.pow * MAXD * reach), c.type, true, {portee, spin: effet, tir: tirStyle, stance});
   };
   btn.addEventListener('pointerup', release);
   btn.addEventListener('pointercancel', release);
@@ -1718,17 +1861,20 @@ holdButton($('bPointer'), 'pointer');
 holdButton($('bTir'), 'tir');
 
 // Choix du coup (boutons qui défilent)
-let portee = 'demi', effet = 0, tirStyle = 'fer';
+let portee = 'demi', effet = 0, tirStyle = 'fer', stance = 'debout';
 const EFFETS = {'0': '<svg class="ic"><use href="#i-line"/></svg> Sans effet', '1': '<svg class="ic"><use href="#i-curl-l"/></svg> Effet gauche', '-1': '<svg class="ic"><use href="#i-curl-r"/></svg> Effet droite'};
 function refreshChips() {
   $('cPortee').textContent = PORTEES[portee].n;
   $('cEffet').innerHTML = EFFETS[effet];
   $('cTir').textContent = 'Tir ' + TIRS[tirStyle].n.toLowerCase();
+  $('cPos').innerHTML = (stance === 'debout' ? '<svg class="ic"><use href="#i-stand"/></svg> Debout' : '<svg class="ic"><use href="#i-crouch"/></svg> Accroupi');
+  $('cPos').classList.toggle('on', stance === 'accroupi');
   $('cEffet').classList.toggle('on', effet !== 0);
 }
 $('cPortee').onclick = () => { const k = Object.keys(PORTEES); portee = k[(k.indexOf(portee) + 1) % k.length]; refreshChips(); };
 $('cEffet').onclick = () => { effet = effet === 0 ? 1 : effet === 1 ? -1 : 0; refreshChips(); };
-$('cTir').onclick = () => { tirStyle = tirStyle === 'fer' ? 'devant' : 'fer'; refreshChips(); };
+$('cTir').onclick = () => { const k = Object.keys(TIRS); tirStyle = k[(k.indexOf(tirStyle) + 1) % k.length]; refreshChips(); };
+$('cPos').onclick = () => { stance = stance === 'debout' ? 'accroupi' : 'debout'; refreshChips(); };
 refreshChips();
 
 // ---------- Tir de précision (d'après le règlement FIPJP du tir de précision, 2020) ----------
@@ -2228,6 +2374,7 @@ const RENDER = {
     $('bChampNew').classList.toggle('hidden', !ok);
   },
   scrTir() { teamCard('pickT', cfg.team[0]); },
+  scrHow() { $('howTerrains').innerHTML = TERRAINS.map((t, i) => '<div class="tcard"><img src="' + terrainThumb(i) + '" alt=""><b>' + t.n + '</b><small>' + t.d + '</small></div>').join(''); },
   scrMulti() { renderPlayers(); segUI('segLen', [['full', 'Complète', '20 tirs · 6 à 9 m'], ['short', 'Courte', '5 tirs · à 7 m']], () => multiLen, v => multiLen = v); },
   scrOptions() {
     segUI('segSound', [[true, 'Oui'], [false, 'Non']], () => opts.sound, v => { opts.sound = v; saveOpts(); });
