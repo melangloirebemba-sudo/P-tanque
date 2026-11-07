@@ -641,7 +641,7 @@ let pRem = [[3], [3]], curP = [0, 0], lastP = [0, 0];       // boules restantes 
 const opts = Object.assign({sound: true, vib: true, gauge: 1.4}, (() => { try { return JSON.parse(localStorage.getItem('petanque_opts')) || {}; } catch (e) { return {}; } })());
 const saveOpts = () => { try { localStorage.setItem('petanque_opts', JSON.stringify(opts)); } catch (e) {} };
 let paused = false, flow = {restart: null, quit: null}, lastTeam = 0, crouchAnim = false;
-let rec = null, recNow = 0, rp = null, cer = null, swapAnim = null, lastAISwap = 0;
+let rec = null, recNow = 0, rp = null, cer = null, swapAnim = null, lastAISwap = 0, cheerTeam = -1;
 const isAITurnFor = t => isMulti() ? !!atel.players[t].ai : isAIteam(t);
 // ----- Ralenti : on enregistre chaque lancer, et on le rejoue lentement si le coup est beau -----
 function snap(o) { return {x: o.x, y: o.y, h: o.h || 0, rot: o.rot || 0, team: o.team, r: o.r, dead: o.dead,
@@ -1030,15 +1030,18 @@ function buildCrowd() {
     for (let k = 0; k < 6; k++) add(W + 0.75 + (k % 2) * 0.7, 3.6 + k * 1.5, k + 6);
     for (let k = 0; k < 5; k++) add(0.2 + k * 0.9, L + 0.9 + (k % 2) * 0.6, k + 12);
   } else {
-    for (let k = 0; k < 11; k++) add(-0.55 - (k % 2) * 0.3, 1.2 + k * 1.05, k);
+    for (let k = 0; k < 11; k++) add(-1.05 - (k % 2) * 0.3, 1.2 + k * 1.05, k);
     for (let k = 0; k < 3; k++) add(0.6 + k * 1.3, L + 0.9, k + 13);
   }
   crowd = list;
 }
 const referee = () => {
-  if (cfg.mode === 'atelier' && atel && atel.center) return LAND ? {x: W + 0.5, y: 4.3} : {x: W + 0.75, y: atel.center.y - 0.6};
-  return LAND ? {x: W + 0.5, y: 4.3} : {x: W + 0.7, y: 8.2};
+  if (cfg.mode === 'atelier' && atel && atel.center) return LAND ? {x: -0.55, y: atel.center.y - 1.4} : {x: W + 0.75, y: atel.center.y - 0.6};
+  return LAND ? {x: -0.55, y: 5.4} : {x: W + 0.7, y: 6.0};
 };
+const refSideX = () => LAND ? -0.45 : W + 0.42;   // côté de l'arbitre
+// chaque supporter appartient à une équipe (celle de son maillot) ; dans les menus, personne ne célèbre
+const crowdTeam = i => (phase === 'menu' || !scores) ? -9 : isMulti() ? i % atel.n : i % 2;
 function crowdColor(i) {
   if (phase === 'menu' || !scores) return TEAMS[(i * 7) % TEAMS.length].c;
   if (isMulti()) return tCol(i % atel.n);
@@ -1048,7 +1051,7 @@ function crowdColor(i) {
 function seated(x, y, opt) {
   const p = P(x, y), u = p.s * opt.h / 10;
   if (u < 1) return;
-  const now = performance.now() / 1000, cheer = !opt.ref && now - cheerT < 1.4;
+  const now = performance.now() / 1000, cheer = !opt.ref && now - cheerT < 1.4 && (opt.team === undefined || opt.team === cheerTeam);
   const br = Math.sin(now * 1.3 + opt.ph) * 0.05 * u;   // respiration
   ctx.save(); ctx.translate(p.X, p.Y); ctx.lineCap = 'round';
   ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, 0, 2.4 * u, 0.7 * u, 0, 0, 7); ctx.fill();
@@ -1093,7 +1096,7 @@ function person(x, y, opt) {
   if (opt.seated) return seated(x, y, opt);
   const p = P(x, y), s = p.s, u = s * opt.h / 10;
   if (u < 1) return;
-  const now = performance.now() / 1000, cheer = !opt.nojump && now - cheerT < 1.4;
+  const now = performance.now() / 1000, cheer = !opt.nojump && now - cheerT < 1.4 && (opt.team === undefined || opt.team === cheerTeam);
   const jump = opt.walk ? Math.abs(Math.sin(now * 11)) * 0.35 * u : opt.nojump ? 0 : cheer ? Math.abs(Math.sin((now - cheerT) * 9 + opt.ph)) * 1.2 * u : Math.sin(now * 1.6 + opt.ph) * 0.12 * u;
   ctx.save(); ctx.translate(p.X, p.Y);
   ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, 0, 2.1 * u, 0.6 * u, 0, 0, 7); ctx.fill();
@@ -1127,12 +1130,12 @@ function person(x, y, opt) {
 }
 function drawCrowd() {
   const ref = referee();
-  const items = crowd.map(c => ({x: c.x, y: c.y, o: {h: c.h, ph: c.ph, skin: c.skin, hair: c.hair, shirt: crowdColor(c.i)}}));
+  const items = crowd.map(c => ({x: c.x, y: c.y, o: {h: c.h, ph: c.ph, skin: c.skin, hair: c.hair, shirt: crowdColor(c.i), team: crowdTeam(c.i)}}));
   const showBoard = cfg.mode === 'atelier' && atel && atel.lastPts !== undefined && performance.now() - atel.lastT < 2600;
   items.push({x: ref.x, y: ref.y, o: {h: 1.75, ph: 0, skin: '#5a321b', hair: 'cap', shirt: '#ffd400', ref: true, seated: true, board: showBoard ? String(atel.lastPts) : null}});
   if (cfg.mode === 'atelier' && atel && scores) {   // le coach du tireur, assis près du cercle
     const c = coachSpot();
-    items.push({x: c.x, y: c.y, o: {h: 1.72, ph: 1, skin: '#6b3e22', hair: 'cap', shirt: tCol(current), seated: true, chair: '#3d4a5a'}});
+    items.push({x: c.x, y: c.y, o: {h: 1.72, ph: 1, skin: '#6b3e22', hair: 'cap', shirt: tCol(current), seated: true, chair: '#3d4a5a', team: current}});
   }
   const E = CAM.E;
   items.sort((a, b) => Math.hypot(b.x - E[0], b.y - E[1]) - Math.hypot(a.x - E[0], a.y - E[1]));
@@ -1148,8 +1151,8 @@ const isAITurn = () => isMulti() ? !!atel.players[current].ai : isAIteam(current
 const measure = b => dist(b, jack) - b.r - jack.r;
 const fmt = d => d.toFixed(1).replace('.', ',');
 const showPop = (txt, col) => {
-  if (/CARREAU|PALET|gagne|\+5|But sorti/.test(txt)) { cheerT = performance.now() / 1000; crowdCheer(1); }
-  else if (/Bien|Réussi|Plein|Reculée|But touché/.test(txt)) { cheerT = performance.now() / 1000; crowdCheer(0.55); }
+  if (/CARREAU|PALET|gagne|\+5|But sorti/.test(txt)) { cheerT = performance.now() / 1000; cheerTeam = current; crowdCheer(1); }
+  else if (/Bien|Réussi|réussi|Plein|Reculée|But touché|Cochonnet touché/.test(txt)) { cheerT = performance.now() / 1000; cheerTeam = current; crowdCheer(0.55); }
   else if (/manqué|Manqué|nul|Faute|effleurée|avant l/.test(txt)) crowdOoh();
   pop = {txt, col: col || '#f2ebdd', t: 0};
   return txt;
@@ -1248,7 +1251,12 @@ function ceremony(kind, cont) {
   if (!ppl.length) return cont();
   cer = {kind, t: 0, dur: 3.2, cont, ppl, prev: phase};
   phase = 'ceremony'; setMsg(''); $('controls').classList.add('hidden');
-  if (kind === 'end') { crowdCheer(0.8); cheerT = performance.now() / 1000; }
+  if (kind === 'end') {
+    // seuls les supporters du vainqueur exultent
+    if (cfg.mode === 'atelier' && atel) { const sc = atel.sc.slice(0, atel.n || 2).map((x, i) => x.s * 100 + (atel.bsc[i] || 0)); cheerTeam = sc.indexOf(Math.max(...sc)); }
+    else cheerTeam = scores[0] > scores[1] ? 0 : 1;
+    crowdCheer(0.8); cheerT = performance.now() / 1000;
+  }
   else crowdCheer(0.35);
 }
 function endCeremony() {
@@ -1428,6 +1436,7 @@ function judgeShot() {
   else if (s.ball.shot.recul && moved > 0.8) return showPop('Reculée', '#ffffff');               // elle revient en arrière
   // Palet : elle reste dans les parages ET prend le point
   else if (hit.q >= 0.35 && near < 1.2 && moved > 0.8 && holdsPoint(s.ball)) return showPop('PALET !', '#f2ebdd');
+  else if (hit.q >= 0.35 && moved > 0.8) return showPop('Tir réussi !', '#b9d39a');           // boule bien chassée
   else if (hit.q < 0.35) return showPop('Juste effleurée…', '#dddddd');
 }
 
@@ -1457,7 +1466,7 @@ function onSettled() {
   if (cfg.mode === 'atelier') return atelierSettled();
   const label = judgeShot();
   const go = () => { if (jack.dead || remaining[0] + remaining[1] === 0) return endMene(); decideNext(); };
-  if (label && /CARREAU|PALET/.test(label)) return startReplay(label, go);   // les grands coups méritent un ralenti
+  if (label && /CARREAU|PALET|Reculée|Tir réussi|Cochonnet touché/.test(label)) return startReplay(label, go);   // chaque tir réussi a son ralenti
   go();
 }
 
@@ -1550,7 +1559,7 @@ function endMene() {
     $('menuBtn').classList.toggle('hidden', !over || inChamp);
     $('menuBtn').onclick = goTitle;
     $('endBox').classList.remove('hidden');
-    if (over && !cfg.spectate && (cfg.mode === '2p' || w === 0)) { confetti(160); crowdCheer(1); cheerT = performance.now() / 1000; }
+    if (over && !cfg.spectate && (cfg.mode === '2p' || w === 0)) { confetti(160); crowdCheer(1); cheerT = performance.now() / 1000; cheerTeam = w; }
   };
   later(() => over ? ceremony('end', showEnd) : showEnd(), 1300);
 }
@@ -1878,7 +1887,7 @@ function drawSideline() {
   if (jack && !jack.dead && ['aim', 'moving', 'replay', 'placer', 'settled'].includes(phase)) {
     for (let i = 0; i < perTeam(); i++) {
       const y = Math.min(L + 0.6, jack.y + 0.6 + i * 0.65);
-      person(-0.42, y, {h: 1.74, ph: i + 3, skin: '#6b3e22', hair: 'cap', shirt: tCol(op), nojump: true});
+      person(refSideX(), y, {h: 1.74, ph: i + 3, skin: '#6b3e22', hair: 'cap', shirt: tCol(op), nojump: true});
     }
   }
   if (perTeam() > 1) {
@@ -2095,7 +2104,7 @@ function drawPop() {
 }
 
 // ---------- Entrées ----------
-const canAim = () => (phase === 'aim' || phase === 'cochonnet') && !isAITurn() && !swapAnim;
+const canAim = () => (phase === 'aim' || phase === 'cochonnet') && !isAITurn();
 // écran -> monde
 // (toWorld : voir la caméra 3D)
 
@@ -2121,7 +2130,7 @@ function holdButton(btn, type) {
   btn.addEventListener('contextmenu', e => e.preventDefault());
   btn.addEventListener('pointerdown', e => {
     e.preventDefault();
-    if (!canAim() || charge) return;
+    if (!canAim() || charge || swapAnim) return;   // pas de lancer pendant l'échange de joueurs
     btn.setPointerCapture(e.pointerId); btn.classList.add('down');
     charge = {type: phase === 'cochonnet' ? 'pointer' : type, t: 0, pow: 0, btn};
   });
@@ -2157,7 +2166,7 @@ $('cTir').onclick = () => { const k = Object.keys(TIRS); tirStyle = k[(k.indexOf
 $('cPos').onclick = () => { stance = stance === 'debout' ? 'accroupi' : 'debout'; refreshChips(); };
 // entente : faire venir l'autre joueur de la doublette au cercle
 $('cWho').onclick = () => {
-  if (perTeam() < 2 || phase !== 'aim' || isAITurn() || charge) return;
+  if (perTeam() < 2 || phase !== 'aim' || isAITurn() || charge || swapAnim) return;
   const o = 1 - curP[current];
   if (pRem[current][o] === 0) return;
   const before = throwerName(current);
@@ -2258,7 +2267,7 @@ function atelierSettled() {
   }
   showPop(txt, pts === 5 ? '#f2ebdd' : pts >= 3 ? '#b9d39a' : pts === 1 ? '#f2ebdd' : '#e8907f');
   phase = 'atelWait'; updateHUD();
-  if (pts === 5) startReplay(txt, () => later(nextShot, 400)); else later(nextShot, 1800);
+  if (pts >= 3) startReplay(txt, () => later(nextShot, 400)); else later(nextShot, 1800);
 }
 
 function nextShot() {
@@ -2881,7 +2890,7 @@ function loop(t) {
     if (stopped()) { if (rec) { for (let k = 0; k < 20; k++) { recNow += 0.03; recFrame(); } } onSettled(); }
   }
   if (phase === 'ceremony' && cer) { cer.t += dt; if (cer.t > cer.dur) endCeremony(); }
-  if (swapAnim) { swapAnim.t += dt; if (swapAnim.t > swapAnim.dur) swapAnim = null; }
+  if (swapAnim) { swapAnim.t += dt; if (swapAnim.t > swapAnim.dur) { swapAnim = null; updateHUD(); } }
   if (phase === 'replay' && rp) {
     rp.t += dt * 0.33;                                   // un tiers de la vitesse réelle
     const T0 = rp.t, F = rec;
