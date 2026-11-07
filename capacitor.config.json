@@ -1,0 +1,13 @@
+{
+  "appId": "com.linsomniaque.cochonnetdor",
+  "appName": "Cochonnet d'Or",
+  "webDir": "www",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "launchAutoHide": true,
+      "backgroundColor": "#0e1712",
+      "showSpinner": false
+    }
+  }
+}

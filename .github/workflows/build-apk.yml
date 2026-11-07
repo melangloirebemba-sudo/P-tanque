@@ -1,0 +1,53 @@
+name: Construire l'APK
+
+# Se lance à chaque envoi sur la branche main, ou à la main depuis l'onglet « Actions ».
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installer Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Installer le SDK Android
+        uses: android-actions/setup-android@v3
+
+      - name: Installer les dépendances
+        run: npm install
+
+      - name: Créer le projet Android (s'il n'est pas déjà dans le dépôt)
+        run: '[ -d android ] || npx cap add android'
+
+      - name: Générer l'icône et l'écran de démarrage
+        run: npx capacitor-assets generate --android
+
+      - name: Copier le jeu dans l'application
+        run: npx cap sync android
+
+      - name: Construire l'APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Mettre l'APK en téléchargement
+        uses: actions/upload-artifact@v4
+        with:
+          name: cochonnet-dor-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
