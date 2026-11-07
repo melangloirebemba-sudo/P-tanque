@@ -30,6 +30,12 @@ jobs:
       - name: Créer le projet Android (s'il n'est pas déjà dans le dépôt)
         run: '[ -d android ] || npx cap add android'
 
+      - name: Autoriser la vibration (sinon Android ferme l'appli au premier choc)
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.VIBRATE' $M || sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.VIBRATE" />#' $M
+          grep -n 'permission' $M
+
       - name: Générer l'icône et l'écran de démarrage
         run: npx capacitor-assets generate --android
 
