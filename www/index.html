@@ -26,6 +26,9 @@
   canvas#fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:60}
   button{font:inherit;font-weight:800;border:none;color:var(--txt);cursor:pointer;background:none}
   .hidden{display:none!important}
+  .wbtn{font-size:12px;font-weight:800;padding:3px 9px;border-radius:8px;margin-left:6px;color:var(--cream);box-shadow:inset 0 0 0 1.5px var(--line);vertical-align:1px}
+  .chip.who{max-width:94vw;overflow:hidden;text-overflow:ellipsis}
+  .chip:disabled{opacity:.6}
   .names{display:flex;gap:6px;margin:6px 0 2px}
   .names input{flex:1;min-width:0;font:inherit;font-weight:800;font-size:15px;color:var(--txt);background:rgba(0,0,0,.25);border:none;border-radius:10px;padding:9px 10px;outline:none;box-shadow:inset 0 0 0 1px var(--line);user-select:text;-webkit-user-select:text}
   .names input:focus{box-shadow:inset 0 0 0 2px var(--cream)}
@@ -394,6 +397,7 @@
 <div id="safeProbe"></div>
 <div id="controls" class="hidden">
   <div class="chips">
+    <button id="cWho" class="chip who"></button>
     <button id="cPos" class="chip"></button>
     <button id="cPortee" class="chip"></button>
     <button id="cEffet" class="chip"></button>
@@ -468,10 +472,12 @@
   <div class="modes">
     <button class="mode c" id="goMulti"><span class="ico"><svg class="ic"><use href="#i-users"/></svg></span><span><span class="t">Multijoueur</span><span class="d">De 2 à 6 joueurs, chacun son tour</span></span></button>
     <button class="mode" id="goComp"><span class="ico"><svg class="ic"><use href="#i-medal"/></svg></span><span><span class="t">Compétition</span><span class="d">Qualifications, puis face-à-face jusqu'à la finale</span></span></button>
+    <button class="mode b" id="goDemo"><span class="ico"><svg class="ic"><use href="#i-target"/></svg></span><span><span class="t">Ordi contre ordi</span><span class="d">Un face-à-face à regarder entre deux clubs</span></span></button>
     <button class="mode b" id="goTrain"><span class="ico"><svg class="ic"><use href="#i-ball"/></svg></span><span><span class="t">Entraînement</span><span class="d">Une série de 20 tirs, record à battre</span></span></button>
   </div>
   <div class="panel">
     <div class="field"><label>Votre équipe (compétition et entraînement)</label><button class="teamCard" id="pickT"></button></div>
+    <div class="field"><label>Adversaire (ordi contre ordi)</label><button class="teamCard" id="pickT2"></button></div>
   </div>
 </div>
 
@@ -527,11 +533,12 @@
     </ul>
     <h3>La partie</h3>
     <p>En <b>tête-à-tête</b>, chaque équipe a 1 joueur et 3 boules ; en <b>doublette</b>, 2 joueurs et 3 boules chacun (6 par équipe). Vous pouvez saisir le nom des joueurs : ils remplacent le nom du club pendant la partie. Le gagnant du tirage au sort choisit le terrain et lance le cochonnet, qui doit tomber entre 6 et 10 m. Sinon l'adversaire le place. L'équipe qui n'a pas le point joue. À la fin de la mène, chaque boule plus proche que la meilleure adverse vaut un point. Partie en 9, 11 ou 13.</p>
+    <p>En doublette, c'est le <b>pointeur</b> qui va au cercle par défaut ; pour envoyer le <b>tireur</b>, touchez « Au cercle ». Un joueur qui sort de son rôle est un peu moins précis.</p>
     <p><b>Carreau</b> : la boule tirée prend la place de la boule chassée. <b>Palet</b> : elle reste tout près et prend le point. <b>Reculée</b> : avec l'effet rétro, elle revient en arrière après le choc. Le carreau demande un tir <b>au fer</b> bien droit, et même alors il n'est pas garanti.</p>
     <h3>Les terrains</h3>
     <div class="tpick" id="howTerrains"></div>
     <h3>Tir de précision</h3>
-    <p>5 ateliers × 4 distances = 20 tirs, 100 points maximum. L'impact doit être dans le cercle (et après l'obstacle pour les ateliers 2 et 4).</p>
+    <p>5 ateliers × 4 distances = 20 tirs, 100 points maximum. En face-à-face, le match s'arrête dès qu'un joueur ne peut plus être rejoint. L'impact doit être dans le cercle (et après l'obstacle pour les ateliers 2 et 4).</p>
     <ul>
       <li><b>5</b> : carreau, ou but sorti du cercle.</li>
       <li><b>3</b> : cible et boule de tir sortent, ou but touché qui reste.</li>
@@ -577,6 +584,7 @@
   <p id="chSub" class="lead"></p>
   <p id="chNext" class="big" style="font-size:20px"></p>
   <button id="chPlay" class="btn"></button>
+  <div class="panel bk" id="chOther"></div>
   <div class="panel"><table id="chTable"></table></div>
   <div class="panel" id="chRes"></div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
@@ -614,7 +622,7 @@ const TERRAINS = [
   // béton : dur et lisse, les boules rebondissent en retombant et roulent loin
   {n: 'Béton', d: 'dur, ça rebondit', dec: 1.3, base: ['#a3a39d', '#b3b3ad'], border: '#5f5f5a', bump: 0.03, bounce: 0.38, concrete: true}
 ];
-const cfg = {mode: 'ai', team: [0, 1], terrain: 0, win: 13, diff: 1, format: 'tat',
+const cfg = {mode: 'ai', team: [0, 1], terrain: 0, win: 13, diff: 1, format: 'tat', spectate: false, watch: null,
   names: (() => { try { const n = JSON.parse(localStorage.getItem('petanque_names')); if (n && n.length === 2) return n; } catch (e) {} return [['', ''], ['', '']]; })()};
 const saveNames = () => { try { localStorage.setItem('petanque_names', JSON.stringify(cfg.names)); } catch (e) {} };
 const perTeam = () => cfg.format === 'doublette' ? 2 : 1;     // joueurs par équipe (3 boules chacun)
@@ -643,18 +651,20 @@ let anim = null, lastAng = 0, lastPow = 0, lastShot = null;
 let shake = 0, parts = [], pop = null;
 const T = () => TERRAINS[cfg.terrain];
 const vsAI = () => cfg.mode !== '2p';
+const isAIteam = t => cfg.spectate || (vsAI() && t === 1);   // en mode spectateur, les deux équipes sont jouées par l'ordinateur
+const userPlay = () => { cfg.spectate = false; cfg.watch = null; };
 const isMulti = () => cfg.mode === 'atelier' && atel && atel.players;
-const useNames = () => cfg.mode === 'ai' || cfg.mode === '2p';
+const useNames = () => cfg.mode === 'ai' || cfg.mode === '2p' || cfg.mode === 'cpu';
 // nom d'un joueur : celui saisi, sinon le club (avec un numéro en doublette)
 function playerName(t, i) {
   const n = useNames() && cfg.names[t][i] && cfg.names[t][i].trim();
   if (n) return n;
-  return TEAMS[cfg.team[t]].n + (perTeam() > 1 ? ' ' + (i + 1) : '');
+  return TEAMS[cfg.team[t]].n + (perTeam() > 1 ? ' ' + ROLES[i] : '');
 }
 // nom de l'équipe : les noms des joueurs s'ils ont été saisis, sinon le club
 function tName(t) {
   if (isMulti()) { const p = atel.players[t]; return p.name + (p.ai ? ' (ordi)' : ''); }
-  const ai = vsAI() && t === 1 ? ' (ordi)' : '';
+  const ai = isAIteam(t) ? ' (ordi)' : '';
   const given = useNames() ? cfg.names[t].slice(0, perTeam()).map(x => (x || '').trim()) : [];
   if (given.some(Boolean)) return given.map((x, i) => x || playerName(t, i)).join(' & ') + ai;
   return TEAMS[cfg.team[t]].n + ai;
@@ -662,15 +672,15 @@ function tName(t) {
 // celui ou celle qui est au cercle
 function throwerName(t) {
   if (cfg.mode === 'atelier' || (perTeam() === 1 && !(useNames() && (cfg.names[t][0] || '').trim()))) return tName(t);
-  return playerName(t, curP[t]) + (vsAI() && t === 1 ? ' (ordi)' : '');
+  return playerName(t, curP[t]) + (isAIteam(t) ? ' (ordi)' : '');
 }
 // en doublette, les deux joueurs se partagent les 6 boules : celui qui en a le plus joue (en alternant)
+// doublette : par défaut c'est le pointeur qui va au cercle ; pour envoyer le tireur, l'équipe doit le choisir
+const ROLES = ['pointeur', 'tireur'];
 function setThrower(t) {
   const r = pRem[t];
   if (r.length === 1) { curP[t] = 0; return; }
-  let i = r[0] === r[1] ? 1 - lastP[t] : r[0] > r[1] ? 0 : 1;
-  if (r[i] === 0) i = 1 - i;
-  curP[t] = i;
+  curP[t] = r[0] > 0 ? 0 : 1;
 }
 const tCol = t => isMulti() ? TEAMS[atel.players[t].club].c : TEAMS[cfg.team[t]].c;
 const shooterTeam = () => isMulti() ? 'p' + current : current;
@@ -819,7 +829,7 @@ function resize() {
   LAND = cw > ch;
   const sp = $('safeProbe'), sTop = sp ? parseFloat(getComputedStyle(sp).paddingTop) || 0 : 0, sBot = sp ? parseFloat(getComputedStyle(sp).paddingBottom) || 0 : 0;
   if (!LAND) {
-    const top = 84 + sTop + 50 + (document.body.classList.contains('multi') ? 44 : 0), bot = 124 + sBot;
+    const top = 84 + sTop + 50 + (document.body.classList.contains('multi') ? 44 : 0), bot = 124 + sBot + (perTeam() > 1 && cfg.mode !== 'atelier' && !cfg.spectate ? 34 : 0);
     setupCam([CIRCLE.x, -2.9, 7.6], [CIRCLE.x, 7.2, 0], {l: 2, r: cw - 2, t: top, b: ch - bot}, [[-0.2, 2.4, 0], [W + 0.2, 2.4, 0], [-0.2, L + 0.2, 0], [W + 0.2, L + 0.2, 0]]);
   } else {
     const big = ch > 620, top = big ? 170 : 92, bot = big ? 130 : 104;   // place au-dessus pour le public
@@ -989,7 +999,53 @@ function crowdColor(i) {
   if (isMulti()) return tCol(i % atel.n);
   return tCol(i % 2);
 }
+// personnage assis sur une chaise (arbitre, coach)
+function seated(x, y, opt) {
+  const p = P(x, y), u = p.s * opt.h / 10;
+  if (u < 1) return;
+  const now = performance.now() / 1000, cheer = !opt.ref && now - cheerT < 1.4;
+  const br = Math.sin(now * 1.3 + opt.ph) * 0.05 * u;   // respiration
+  ctx.save(); ctx.translate(p.X, p.Y); ctx.lineCap = 'round';
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, 0, 2.4 * u, 0.7 * u, 0, 0, 7); ctx.fill();
+  // chaise : pieds, dossier, assise
+  ctx.strokeStyle = '#2f2f2f'; ctx.lineWidth = 0.32 * u;
+  ctx.beginPath(); ctx.moveTo(-1.5 * u, 0); ctx.lineTo(-1.5 * u, -2.8 * u); ctx.moveTo(1.5 * u, 0); ctx.lineTo(1.5 * u, -2.8 * u);
+  ctx.moveTo(-1.45 * u, -2.8 * u); ctx.lineTo(-1.45 * u, -7.6 * u); ctx.moveTo(1.45 * u, -2.8 * u); ctx.lineTo(1.45 * u, -7.6 * u); ctx.stroke();
+  ctx.fillStyle = opt.chair || '#6b4a2b';
+  ctx.fillRect(-1.7 * u, -7.7 * u, 3.4 * u, 1.3 * u);
+  // jambes (cuisses vers l'avant, tibias au sol)
+  ctx.strokeStyle = opt.pants || '#2a2d33'; ctx.lineWidth = 0.95 * u;
+  ctx.beginPath(); ctx.moveTo(-0.6 * u, -3.1 * u); ctx.lineTo(-0.65 * u, -0.25 * u); ctx.moveTo(0.6 * u, -3.1 * u); ctx.lineTo(0.65 * u, -0.25 * u); ctx.stroke();
+  ctx.fillStyle = opt.pants || '#2a2d33'; ctx.fillRect(-1.25 * u, -3.7 * u, 2.5 * u, 1 * u);
+  ctx.fillStyle = opt.chair || '#6b4a2b'; ctx.fillRect(-1.75 * u, -3.0 * u, 3.5 * u, 0.4 * u);
+  ctx.translate(0, br);
+  // buste
+  ctx.fillStyle = opt.shirt;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-1.3 * u, -7.4 * u, 2.6 * u, 3.9 * u, .6 * u) : ctx.rect(-1.3 * u, -7.4 * u, 2.6 * u, 3.9 * u); ctx.fill();
+  if (opt.ref) { ctx.fillStyle = '#111'; for (let k = 0; k < 3; k++) ctx.fillRect(-1.3 * u, (-6.9 + k * 1.15) * u, 2.6 * u, .42 * u); }
+  // bras : posés sur les genoux ; l'arbitre lève seulement sa plaque ; le coach applaudit
+  ctx.strokeStyle = opt.skin; ctx.lineWidth = 0.7 * u; ctx.beginPath();
+  if (cheer) { ctx.moveTo(-1.2 * u, -6.9 * u); ctx.lineTo(-0.3 * u, -9.4 * u); ctx.moveTo(1.2 * u, -6.9 * u); ctx.lineTo(0.3 * u, -9.4 * u); }
+  else {
+    ctx.moveTo(-1.2 * u, -6.9 * u); ctx.lineTo(-0.9 * u, -3.9 * u);
+    if (opt.board) { ctx.moveTo(1.2 * u, -6.9 * u); ctx.lineTo(2.2 * u, -8.4 * u); } else { ctx.moveTo(1.2 * u, -6.9 * u); ctx.lineTo(0.9 * u, -3.9 * u); }
+  }
+  ctx.stroke();
+  // tête
+  ctx.fillStyle = opt.skin; ctx.beginPath(); ctx.arc(0, -8.4 * u, 0.95 * u, 0, 7); ctx.fill();
+  ctx.fillStyle = opt.ref ? '#111' : opt.shirt; ctx.beginPath(); ctx.arc(0, -8.65 * u, 0.98 * u, Math.PI, 0); ctx.fill();
+  if (opt.board) {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#222'; ctx.lineWidth = Math.max(1, .2 * u);
+    ctx.fillRect(1.4 * u, -11.4 * u, 2.6 * u, 2.6 * u); ctx.strokeRect(1.4 * u, -11.4 * u, 2.6 * u, 2.6 * u);
+    ctx.fillStyle = '#111'; ctx.font = '900 ' + (2.1 * u) + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(opt.board, 2.7 * u, -10.05 * u);
+  }
+  ctx.restore();
+}
+const coachSpot = () => ({x: CIRCLE.x + 1.25, y: 0.28});   // juste derrière le tireur, à sa droite
+
 function person(x, y, opt) {
+  if (opt.seated) return seated(x, y, opt);
   const p = P(x, y), s = p.s, u = s * opt.h / 10;
   if (u < 1) return;
   const now = performance.now() / 1000, cheer = now - cheerT < 1.4;
@@ -1028,7 +1084,11 @@ function drawCrowd() {
   const ref = referee();
   const items = crowd.map(c => ({x: c.x, y: c.y, o: {h: c.h, ph: c.ph, skin: c.skin, hair: c.hair, shirt: crowdColor(c.i)}}));
   const showBoard = cfg.mode === 'atelier' && atel && atel.lastPts !== undefined && performance.now() - atel.lastT < 2600;
-  items.push({x: ref.x, y: ref.y, o: {h: 1.75, ph: 0, skin: '#5a321b', hair: 'cap', shirt: '#ffd400', ref: true, board: showBoard ? String(atel.lastPts) : null}});
+  items.push({x: ref.x, y: ref.y, o: {h: 1.75, ph: 0, skin: '#5a321b', hair: 'cap', shirt: '#ffd400', ref: true, seated: true, board: showBoard ? String(atel.lastPts) : null}});
+  if (cfg.mode === 'atelier' && atel && scores) {   // le coach du tireur, assis près du cercle
+    const c = coachSpot();
+    items.push({x: c.x, y: c.y, o: {h: 1.72, ph: 1, skin: '#6b3e22', hair: 'cap', shirt: tCol(current), seated: true, chair: '#3d4a5a'}});
+  }
   const E = CAM.E;
   items.sort((a, b) => Math.hypot(b.x - E[0], b.y - E[1]) - Math.hypot(a.x - E[0], a.y - E[1]));
   items.forEach(it => person(it.x, it.y, it.o));
@@ -1039,7 +1099,7 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const live = () => { const o = balls.filter(b => !b.dead); if (jack && !jack.dead) o.push(jack); return o; };
 const out = o => o.x < 0 || o.x > W || o.y < 0 || o.y > L;
 function gauss() { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
-const isAITurn = () => isMulti() ? !!atel.players[current].ai : vsAI() && current === 1;
+const isAITurn = () => isMulti() ? !!atel.players[current].ai : isAIteam(current);
 const measure = b => dist(b, jack) - b.r - jack.r;
 const fmt = d => d.toFixed(1).replace('.', ',');
 const showPop = (txt, col) => {
@@ -1068,6 +1128,14 @@ function updateHUD() {
   $('cPortee').classList.toggle('hidden', phase !== 'aim' || at);
   $('cEffet').classList.toggle('hidden', phase !== 'aim' || at);
   $('cPos').classList.toggle('hidden', phase !== 'aim' || at);
+  const showWho = !at && perTeam() > 1 && phase === 'aim' && !isAITurn();
+  $('cWho').classList.toggle('hidden', !showWho);
+  if (showWho) {
+    const o = 1 - curP[current], canSwap = pRem[current][o] > 0;
+    const i = curP[current], custom = useNames() && (cfg.names[current][i] || '').trim();
+    $('cWho').innerHTML = '<svg class="ic"><use href="#i-users"/></svg> Au cercle : ' + playerName(current, i).replace(/</g, '&lt;') + (custom ? ' (' + ROLES[i] + ')' : '') + ' · ' + pRem[current][i] + ' boule' + (pRem[current][i] > 1 ? 's' : '') + (canSwap ? ' · changer' : '');
+    $('cWho').disabled = !canSwap;
+  }
   $('cTir').classList.toggle('hidden', phase !== 'aim');
   $('bPointer').classList.toggle('hidden', at);
   $('bTir').classList.toggle('hidden', phase !== 'aim');
@@ -1160,7 +1228,7 @@ function drawToss(ang, scale) {
 }
 
 function tossDone(w) {
-  const human = !(vsAI() && w === 1);
+  const human = !isAIteam(w);
   $('tossRes').innerHTML = '<span style="color:' + tCol(w) + '">' + tName(w) + '</span> gagne le tirage !';
   if (human) {
     $('tossLbl').textContent = tName(w) + ', choisissez le terrain';
@@ -1207,6 +1275,10 @@ function doThrow(dx, dy, d, type, human, opt = {}) {
     dx = Math.sin(a); dy = Math.cos(a); d += gauss() * (opt.tir === 'sautee' ? 0.1 : 0.08);
   }
   const crouch = !tir && !isJack && opt.stance === 'accroupi';
+  if (perTeam() > 1 && cfg.mode !== 'atelier' && !isJack && (tir ? curP[current] === 0 : curP[current] === 1)) {
+    const a = Math.atan2(dx, dy) + gauss() * 0.009;   // le pointeur qui tire (ou le tireur qui pointe) est moins sûr
+    dx = Math.sin(a); dy = Math.cos(a); d *= 1 + gauss() * 0.03;
+  }
   if (human && !tir) {                      // le point aussi : la main n'est jamais parfaite
     const sa = isJack ? 0.01 : crouch ? 0.007 : 0.011, sd = isJack ? 0.04 : crouch ? 0.03 : 0.045;
     const a = Math.atan2(dx, dy) + gauss() * sa;
@@ -1372,13 +1444,14 @@ function endMene() {
     const w = scores[0] > scores[1] ? 0 : 1;
     $('endTitle').textContent = over ? tName(w) + ' gagne !' : 'Fin de la mène ' + menNo;
     $('endText').textContent = text + '  Score : ' + tName(0) + ' ' + scores[0] + ' - ' + scores[1] + ' ' + tName(1);
-    const inChamp = over && cfg.mode === 'champ';
-    $('endBtn').textContent = inChamp ? 'Voir le classement' : over ? 'Rejouer' : 'Mène suivante';
-    $('endBtn').onclick = inChamp ? () => { finishRound([scores[0], scores[1]]); showChamp(); } : over ? newGame : newMene;
+    const inChamp = over && cfg.mode === 'champ', watched = inChamp && cfg.watch && cfg.watch.type === 'champ';
+    $('endBtn').textContent = watched ? 'Retour au championnat' : inChamp ? 'Voir le classement' : over ? 'Rejouer' : 'Mène suivante';
+    $('endBtn').onclick = watched ? () => { champ.watched = champ.watched || {}; champ.watched[cfg.watch.key] = [scores[0], scores[1]]; saveChamp(); userPlay(); showChamp(); }
+      : inChamp ? () => { finishRound([scores[0], scores[1]]); showChamp(); } : over ? newGame : newMene;
     $('menuBtn').classList.toggle('hidden', !over || inChamp);
     $('menuBtn').onclick = goTitle;
     $('endBox').classList.remove('hidden');
-    if (over && (cfg.mode === '2p' || w === 0)) { confetti(160); crowdCheer(1); cheerT = performance.now() / 1000; }
+    if (over && !cfg.spectate && (cfg.mode === '2p' || w === 0)) { confetti(160); crowdCheer(1); cheerT = performance.now() / 1000; }
   }, 1300);
 }
 
@@ -1390,7 +1463,7 @@ function aiPlay() {
   if (!isAITurn()) return;
   if (cfg.mode === 'atelier') {
     if (phase !== 'aim') return;
-    const tg = atel.target, sk = isMulti() ? [0, 0.45, 0.65, 0.85][atel.players[current].ai] : comp ? comp.skill[cfg.team[1]] : 0.6;
+    const tg = atel.target, sk = isMulti() ? [0, 0.45, 0.65, 0.85][atel.players[current].ai] : comp ? comp.skill[cfg.team[current]] : 0.6;
     const d = Math.hypot(tg.x - CIRCLE.x, tg.y - CIRCLE.y) + 0.22 + gauss() * 0.18;
     const ang = Math.atan2(tg.x - CIRCLE.x, tg.y - CIRCLE.y) + gauss() * (0.05 - sk * 0.03);
     lastPow = 0.8;
@@ -1402,19 +1475,19 @@ function aiPlay() {
     return doThrow(Math.sin(a), Math.cos(a), d, 'pointer', false);
   }
   if (phase !== 'aim') return;
-  const best = closest(), opp = best[0], mine = best[1], t = T();
+  const me = current, op = 1 - current, best = closest(), opp = best[op], mine = best[me], t = T();
   const m = [1.7, 1, 0.55][cfg.diff];   // niveau de l'ordinateur
   let type = 'pointer', tx = jack.x, ty = jack.y, opt = {portee: 'demi'};
   // combien de points l'adversaire marquerait si la mène s'arrêtait là
-  const oppPoints = opp ? balls.filter(b => !b.dead && b.team === 0 && (!mine || measure(b) < mine.d)).length : 0;
+  const oppPoints = opp ? balls.filter(b => !b.dead && b.team === op && (!mine || measure(b) < mine.d)).length : 0;
   const myLead = mine && (!opp || mine.d < opp.d);
-  if (opp && !myLead && remaining[0] === 0 && remaining[1] >= 1 && oppPoints >= 2 && Math.random() < 0.6 + 0.15 * cfg.diff) {
+  if (opp && !myLead && remaining[op] === 0 && remaining[me] >= 1 && oppPoints >= 2 && Math.random() < 0.6 + 0.15 * cfg.diff) {
     // astuce : l'adversaire n'a plus de boules et va marquer gros -> on tire le cochonnet hors du terrain
     type = 'tir'; opt = {tir: 'fer'};
   } else if (opp && !myLead) {
     // l'adversaire tient le point : plus sa boule est collée au cochonnet, plus on a intérêt à tirer
     const close = opp.d < 0.1 ? 0.85 : opp.d < 0.25 ? 0.65 : opp.d < 0.45 ? 0.35 : 0.08;
-    const keen = close * (remaining[1] >= remaining[0] ? 1 : 0.75) * (oppPoints >= 2 ? 1.15 : 1);
+    const keen = close * (remaining[me] >= remaining[op] ? 1 : 0.75) * (oppPoints >= 2 ? 1.15 : 1);
     if (Math.random() < keen) {
       type = 'tir'; tx = opp.b.x; ty = opp.b.y;
       const jackInFront = jack.y < opp.b.y && Math.abs(jack.x - opp.b.x) < 0.25 && opp.b.y - jack.y < 0.6;
@@ -1426,13 +1499,15 @@ function aiPlay() {
     const L_ = Math.hypot(tx - CIRCLE.x, ty - CIRCLE.y), ux = (tx - CIRCLE.x) / L_, uy = (ty - CIRCLE.y) / L_;
     const blocked = balls.some(b => { if (b.dead) return false; const px = b.x - CIRCLE.x, py = b.y - CIRCLE.y, along = px * ux + py * uy, side = Math.abs(px * uy - py * ux); return along > L_ * 0.45 && along < L_ - 0.25 && side < 0.3; });
     opt = {portee: blocked || t.wet || t.concrete ? 'plombee' : t.dec > 3 ? 'demi' : 'demi'};
-    if (myLead && remaining[1] > 1) ty -= 0.08;   // on tient déjà le point : on assure un peu court
+    if (myLead && remaining[me] > 1) ty -= 0.08;   // on tient déjà le point : on assure un peu court
     // la pente : on vise plus haut sur la pente pour que la boule redescende vers le cochonnet
     if (t.slope) {
       const pr = PORTEES[opt.portee], rollD = L_ * (1 - pr.f), v = Math.sqrt(2 * t.dec * rollD), tr = v / t.dec;
       tx -= 0.5 * t.slope[0] * tr * tr * 0.85;
     }
   }
+  // doublette : on s'entend, le tireur tire et le pointeur pointe (si chacun a encore des boules)
+  if (perTeam() > 1) { const want = type === 'tir' ? 1 : 0; curP[me] = pRem[me][want] > 0 ? want : 1 - want; }
   let d = Math.hypot(tx - CIRCLE.x, ty - CIRCLE.y), ang = Math.atan2(tx - CIRCLE.x, ty - CIRCLE.y);
   if (type === 'pointer' && t.bounce) {   // béton : on tient compte du rebond pour ne pas aller trop loin ou trop court
     const pr = PORTEES[opt.portee], est = dd => { const l = dd * pr.f, roll = dd - l, H = pr.H0 + l * pr.Hk; return H > 0.15 ? l + Math.min(1.3, H * t.bounce * 1.5) + roll * 0.7744 : dd; };
@@ -1917,6 +1992,16 @@ $('cPortee').onclick = () => { const k = Object.keys(PORTEES); portee = k[(k.ind
 $('cEffet').onclick = () => { effet = effet === 0 ? 1 : effet === 1 ? -1 : 0; refreshChips(); };
 $('cTir').onclick = () => { const k = Object.keys(TIRS); tirStyle = k[(k.indexOf(tirStyle) + 1) % k.length]; refreshChips(); };
 $('cPos').onclick = () => { stance = stance === 'debout' ? 'accroupi' : 'debout'; refreshChips(); };
+// entente : faire venir l'autre joueur de la doublette au cercle
+$('cWho').onclick = () => {
+  if (perTeam() < 2 || phase !== 'aim' || isAITurn() || charge) return;
+  const o = 1 - curP[current];
+  if (pRem[current][o] === 0) return;
+  const before = throwerName(current);
+  curP[current] = o;
+  const m = $('msg'); if (m.textContent) setMsg(m.textContent.replace(before, throwerName(current)));
+  updateHUD();
+};
 refreshChips();
 
 // ---------- Tir de précision (d'après le règlement FIPJP du tir de précision, 2020) ----------
@@ -1954,7 +2039,7 @@ function startSeries(kind, onEnd, players, dists) {
   $('hud').classList.remove('hidden'); $('multiBoard').classList.toggle('hidden', !players);
   scores = [0, 0]; menNo = 0; parts = []; pop = null;
   flow = {restart: () => startSeries(kind, onEnd, players, dists),
-          quit: kind === 'multi' ? () => { document.body.classList.remove('multi'); show('scrMulti'); } : kind === 'train' ? goTitle : showComp};
+          quit: kind === 'multi' ? () => { document.body.classList.remove('multi'); show('scrMulti'); } : kind === 'train' || (cfg.watch && cfg.watch.type === 'demo') ? goTitle : showComp};
   setupShot();
 }
 
@@ -2033,6 +2118,17 @@ function nextShot() {
     return setupShot();
   }
   if (atel.kind === 'duel') {
+    if (!atel.barrage) {
+      // l'écart est plus grand que tout ce que l'autre peut encore marquer (5 points par tir restant) : on arrête
+      const left = w => atel.seq.slice(atel.idx).filter(x => x.who === w).length;
+      const s0 = atel.sc[0].s, s1 = atel.sc[1].s;
+      if (s0 > s1 + 5 * left(1) || s1 > s0 + 5 * left(0)) {
+        atel.cut = true;
+        showPop('Match arrêté !', '#f2ebdd');
+        setMsg(tName(s0 > s1 ? 0 : 1) + ' ne peut plus être rejoint : le face-à-face s\'arrête');
+        return later(seriesEnd, 1500);
+      }
+    }
     if (atel.barrage && atel.idx % 2 === 0) {
       atel.bPairs++;
       if (atel.bPairs >= 5 && atel.bsc[0] !== atel.bsc[1]) return seriesEnd();
@@ -2172,6 +2268,7 @@ function duelEnd(at) {
   m.sa = meA ? my : op; m.sb = meA ? op : my;
   const iWin = my > op || (my === op && at.bsc[0] > at.bsc[1]);
   if (at.barrage) m.bar = true;
+  if (at.cut) m.cut = true;
   m.w = iWin ? comp.me : (meA ? m.b : m.a);
   if (!iWin) comp.myOut = true;
   advance();
@@ -2179,6 +2276,7 @@ function duelEnd(at) {
 }
 
 function showComp() {
+  userPlay();
   hideScreens(); $('hud').classList.add('hidden'); $('controls').classList.add('hidden'); document.body.classList.remove('multi');
   setMsg(''); phase = 'menu'; scores = null; resize();
   $('comp').classList.remove('hidden');
@@ -2189,7 +2287,7 @@ function showComp() {
     $('cpTitle').textContent = 'Tir de précision - Qualifications';
     $('cpSub').innerHTML = TEAMS.length + ' équipes. Chaque équipe tire seule une série de 20 boules (5 ateliers à 6, 7, 8 et 9 m).<br>Les <b>16 meilleures</b> vont en huitièmes de finale, en face-à-face.';
     play.textContent = 'Tirer la série de ' + N;
-    play.onclick = () => { cfg.team = [me, (me + 1) % TEAMS.length]; startSeries('solo', qualEnd); };
+    play.onclick = () => { userPlay(); cfg.team = [me, (me + 1) % TEAMS.length]; startSeries('solo', qualEnd); };
   } else {
     if (comp.stage === 'done') {
       const F = comp.rounds[ROUNDS.length - 1][0];
@@ -2203,9 +2301,10 @@ function showComp() {
         const opp = m.a === me ? m.b : m.a;
         $('cpSub').innerHTML = 'Face-à-face : <b>' + N + '</b> contre <b>' + nm(opp) + '</b> (ordi).<br>Vous tirez à tour de rôle sur chaque distance de chaque atelier. Le meilleur total se qualifie.';
         play.textContent = 'Jouer le face-à-face';
-        play.onclick = () => { cfg.team = [me, opp]; startSeries('duel', duelEnd); };
+        play.onclick = () => { userPlay(); cfg.team = [me, opp]; startSeries('duel', duelEnd); };
+        $('cpSub').innerHTML += '<br><span style="font-size:13px">Vous pouvez aussi regarder les autres face-à-face du tour.</span>';
       } else {
-        $('cpSub').textContent = comp.myOut ? N + ' est éliminée. Vous pouvez suivre la suite de la compétition.' : '';
+        $('cpSub').textContent = comp.myOut ? N + ' est éliminée. Regardez les face-à-face de votre choix, ou passez directement au tour suivant.' : '';
         play.textContent = 'Voir le tour suivant';
         play.onclick = () => { advance(); showComp(); };
       }
@@ -2214,8 +2313,9 @@ function showComp() {
     comp.rounds.forEach((R, r) => {
       body += '<div class="bk"><b>' + ROUNDS[r] + '</b><br>' + R.map(m => {
         const A = (m.w === m.a ? '<b class="w">' : '') + nm(m.a) + (m.w === m.a ? '</b>' : ''), B = (m.w === m.b ? '<b class="w">' : '') + nm(m.b) + (m.w === m.b ? '</b>' : '');
-        const sc = m.w === undefined ? ' contre ' : ' ' + m.sa + ' - ' + m.sb + (m.bar ? ' (barrage)' : '') + ' ';
-        const line = A + sc + B;
+        const sc = m.w === undefined ? ' contre ' : ' ' + m.sa + ' - ' + m.sb + (m.bar ? ' (barrage)' : '') + (m.cut ? ' (arrêté)' : '') + ' ';
+        const k = R.indexOf(m), watch = r === comp.cur && comp.stage === 'final' && m.w === undefined && m.a !== me && m.b !== me;
+        const line = A + sc + B + (watch ? ' <button class="wbtn" data-k="' + k + '">Regarder</button>' : '');
         return (m.a === me || m.b === me) ? '<span style="background:rgba(242,235,221,.1);padding:1px 4px;border-radius:4px">' + line + '</span>' : line;
       }).join('<br>') + '</div>';
     });
@@ -2228,6 +2328,17 @@ function showComp() {
     body += '</table>';
   }
   $('cpBody').innerHTML = body;
+  $('cpBody').querySelectorAll('.wbtn').forEach(b => b.onclick = () => watchDuel(comp.rounds[comp.cur][+b.dataset.k]));
+}
+// regarder un face-à-face entre deux équipes de l'ordinateur
+function watchDuel(m) {
+  cfg.spectate = true; cfg.watch = {type: 'comp', m}; cfg.team = [m.a, m.b];
+  startSeries('duel', at => {
+    m.sa = at.sc[0].s; m.sb = at.sc[1].s;
+    if (at.barrage) m.bar = true; if (at.cut) m.cut = true;
+    m.w = (m.sa > m.sb || (m.sa === m.sb && at.bsc[0] > at.bsc[1])) ? m.a : m.b;
+    userPlay(); showComp();
+  });
 }
 $('cpMenu').onclick = goTitle;
 
@@ -2278,7 +2389,7 @@ function finishRound(mine) {                   // mine = [score de mon équipe, 
     let sa, sb;
     if (a === champ.team) [sa, sb] = mine;
     else if (b === champ.team) [sb, sa] = mine;
-    else [sa, sb] = simMatch(a, b);
+    else { const w = champ.watched && champ.watched[champ.round + ':' + a + ':' + b]; [sa, sb] = w || simMatch(a, b); }
     record(a, b, sa, sb); res.push([a, b, sa, sb]);
   }
   champ.results.push(res); champ.round++;
@@ -2290,6 +2401,7 @@ const ranking = () => champ.table.map((t, i) => ({i, ...t, diff: t.PF - t.PA}))
   .sort((x, y) => y.Pts - x.Pts || y.diff - x.diff || y.PF - x.PF);
 
 function showChamp() {
+  userPlay();
   phase = 'menu'; scores = null; setMsg('');
   hideScreens(); $('hud').classList.add('hidden'); $('controls').classList.add('hidden'); document.body.classList.remove('multi');
   $('champ').classList.remove('hidden'); resize();
@@ -2318,6 +2430,22 @@ function showChamp() {
       '</td><td>' + r.J + '</td><td>' + r.V + '</td><td>' + r.D + '</td><td>' + r.PF + '</td><td>' + r.PA + '</td><td>' + (r.diff > 0 ? '+' : '') + r.diff + '</td><td class="pts">' + r.Pts + '</td></tr>';
   });
   $('chTable').innerHTML = h;
+  // autres matchs de la journée : on peut les regarder, sinon l'ordinateur les joue en arrière-plan
+  let oth = '';
+  if (!champ.done) {
+    const R = champ.rounds[champ.round].filter(([a, b]) => a !== me && b !== me);
+    oth = '<b>Autres matchs de la journée</b><br>' + R.map(([a, b]) => {
+      const key = champ.round + ':' + a + ':' + b, w = champ.watched && champ.watched[key];
+      return TEAMS[a].n + (w ? ' <b>' + w[0] + ' - ' + w[1] + '</b> ' : ' contre ') + TEAMS[b].n + (w ? ' (regardé)' : ' <button class="wbtn" data-a="' + a + '" data-b="' + b + '">Regarder</button>');
+    }).join('<br>');
+  }
+  $('chOther').innerHTML = oth;
+  $('chOther').querySelectorAll('.wbtn').forEach(bt => bt.onclick = () => {
+    const a = +bt.dataset.a, b = +bt.dataset.b;
+    cfg.mode = 'champ'; cfg.spectate = true; cfg.watch = {type: 'champ', key: champ.round + ':' + a + ':' + b};
+    cfg.team = [a, b]; cfg.win = champ.win; cfg.format = champ.format || 'tat';
+    $('champ').classList.add('hidden'); newGame();
+  });
   const lastRes = champ.results[champ.results.length - 1];
   $('chRes').innerHTML = lastRes ? '<b>Résultats de la journée ' + champ.results.length + '</b><br>' +
     lastRes.map(([a, b, sa, sb]) => {
@@ -2330,7 +2458,7 @@ $('chPlay').onclick = () => {
   const m = userMatch();
   if (!m) { finishRound(null); return showChamp(); }
   const opp = m[0] === champ.team ? m[1] : m[0];
-  cfg.mode = 'champ'; cfg.team = [champ.team, opp]; cfg.win = champ.win; cfg.format = champ.format || 'tat';
+  userPlay(); cfg.mode = 'champ'; cfg.team = [champ.team, opp]; cfg.win = champ.win; cfg.format = champ.format || 'tat';
   $('champ').classList.add('hidden');
   newGame();
 };
@@ -2390,7 +2518,7 @@ function openPicker(title, cur, disabled, cb, back) {
 $('pickBack').onclick = () => show(pickerBack);
 
 // ----- Écran titre -----
-$('goMatch').onclick = () => { if (cfg.mode !== '2p') cfg.mode = 'ai'; show('scrMatch'); };
+$('goMatch').onclick = () => { if (cfg.mode !== '2p' && cfg.mode !== 'cpu') cfg.mode = 'ai'; show('scrMatch'); };
 $('goChamp').onclick = () => show('scrChamp');
 $('goTir').onclick = () => show('scrTir');
 $('goOptions').onclick = () => show('scrOptions');
@@ -2407,13 +2535,13 @@ const RENDER = {
       for (let i = 0; i < perTeam(); i++) {
         const inp = document.createElement('input');
         inp.maxLength = 16; inp.autocomplete = 'off'; inp.value = cfg.names[t][i] || '';
-        inp.placeholder = perTeam() > 1 ? 'Nom du joueur ' + (i + 1) : 'Nom du joueur';
+        inp.placeholder = perTeam() > 1 ? 'Nom du ' + ROLES[i] : 'Nom du joueur';
         inp.oninput = () => { cfg.names[t][i] = inp.value; saveNames(); };
         box.appendChild(inp);
       }
     }
-    if (cfg.mode !== '2p') cfg.mode = 'ai';
-    segUI('segMode', [['ai', 'Ordinateur'], ['2p', '2 joueurs']], () => cfg.mode, v => { cfg.mode = v; RENDER.scrMatch(); });
+    if (cfg.mode !== '2p' && cfg.mode !== 'cpu') cfg.mode = 'ai';
+    segUI('segMode', [['ai', 'Ordinateur'], ['2p', '2 joueurs'], ['cpu', 'Ordi contre ordi', 'à regarder']], () => cfg.mode, v => { cfg.mode = v; RENDER.scrMatch(); });
     $('rowDiff').classList.toggle('hidden', cfg.mode === '2p');
     segUI('segDiff', DIFFS, () => cfg.diff, v => cfg.diff = v);
     segUI('segWin', WINS, () => cfg.win, v => cfg.win = v);
@@ -2428,7 +2556,7 @@ const RENDER = {
     $('bChampGo').textContent = ok ? (sv.done ? 'Voir le classement final' : 'Continuer (journée ' + (sv.round + 1) + ')') : 'Lancer le championnat';
     $('bChampNew').classList.toggle('hidden', !ok);
   },
-  scrTir() { teamCard('pickT', cfg.team[0]); },
+  scrTir() { teamCard('pickT', cfg.team[0]); teamCard('pickT2', cfg.team[1]); },
   scrHow() { $('howTerrains').innerHTML = TERRAINS.map((t, i) => '<div class="tcard"><img src="' + terrainThumb(i) + '" alt=""><b>' + t.n + '</b><small>' + t.d + '</small></div>').join(''); },
   scrMulti() { renderPlayers(); segUI('segLen', [['full', 'Complète', '20 tirs · 6 à 9 m'], ['short', 'Courte', '5 tirs · à 7 m']], () => multiLen, v => multiLen = v); },
   scrOptions() {
@@ -2440,9 +2568,9 @@ const RENDER = {
 };
 
 // ----- Partie rapide -----
-$('pick0').onclick = () => openPicker(cfg.mode === '2p' ? 'Équipe du joueur 1' : 'Votre équipe', cfg.team[0], cfg.team[1], i => cfg.team[0] = i, 'scrMatch');
-$('pick1').onclick = () => openPicker(cfg.mode === '2p' ? 'Équipe du joueur 2' : 'Équipe adverse', cfg.team[1], cfg.team[0], i => cfg.team[1] = i, 'scrMatch');
-$('bPlay').onclick = () => newGame();
+$('pick0').onclick = () => openPicker(cfg.mode === '2p' ? 'Équipe du joueur 1' : cfg.mode === 'cpu' ? 'Première équipe' : 'Votre équipe', cfg.team[0], cfg.team[1], i => cfg.team[0] = i, 'scrMatch');
+$('pick1').onclick = () => openPicker(cfg.mode === '2p' ? 'Équipe du joueur 2' : cfg.mode === 'cpu' ? 'Seconde équipe' : 'Équipe adverse', cfg.team[1], cfg.team[0], i => cfg.team[1] = i, 'scrMatch');
+$('bPlay').onclick = () => { userPlay(); cfg.spectate = cfg.mode === 'cpu'; newGame(); };
 
 // ----- Championnat -----
 $('pickC').onclick = () => openPicker('Votre équipe', cfg.team[0], null, i => { cfg.team[0] = i; if (cfg.team[1] === i) cfg.team[1] = (i + 1) % TEAMS.length; }, 'scrChamp');
@@ -2456,8 +2584,25 @@ $('bChampNew').onclick = () => { newChamp(); cfg.mode = 'champ'; gen++; showCham
 // ----- Tir de précision -----
 $('pickT').onclick = () => openPicker('Votre équipe', cfg.team[0], null, i => { cfg.team[0] = i; if (cfg.team[1] === i) cfg.team[1] = (i + 1) % TEAMS.length; }, 'scrTir');
 $('goMulti').onclick = () => show('scrMulti');
-$('goComp').onclick = () => { gen++; startComp(); };
-$('goTrain').onclick = () => { gen++; startSeries('train', trainEnd); };
+$('pickT2').onclick = () => openPicker('Adversaire', cfg.team[1], cfg.team[0], i => cfg.team[1] = i, 'scrTir');
+function startDemo() {
+  cfg.spectate = true; cfg.watch = {type: 'demo'}; comp = null;
+  startSeries('duel', at => {
+    userPlay();
+    const s0 = at.sc[0].s, s1 = at.sc[1].s, w = (s0 > s1 || (s0 === s1 && at.bsc[0] > at.bsc[1])) ? 0 : 1;
+    $('endTitle').innerHTML = '<svg class="ic"><use href="#i-trophy"/></svg> ' + TEAMS[cfg.team[w]].n + ' gagne';
+    $('endText').innerHTML = '<p style="margin:0">' + TEAMS[cfg.team[0]].n + ' <b>' + s0 + ' - ' + s1 + '</b> ' + TEAMS[cfg.team[1]].n +
+      (at.barrage ? ' (barrage ' + at.bsc[0] + ' - ' + at.bsc[1] + ')' : '') + (at.cut ? '<br>Match arrêté : l\'écart ne pouvait plus être comblé.' : '') + '</p>' +
+      '<details><summary>Feuille de ' + TEAMS[cfg.team[0]].n + '</summary>' + seriesSheet(at.sc[0].log, at.dists) + '</details>' +
+      '<details><summary>Feuille de ' + TEAMS[cfg.team[1]].n + '</summary>' + seriesSheet(at.sc[1].log, at.dists) + '</details>';
+    $('endBtn').textContent = 'Revoir un match'; $('endBtn').onclick = startDemo;
+    $('menuBtn').classList.remove('hidden'); $('menuBtn').textContent = 'Menu principal'; $('menuBtn').onclick = goTitle;
+    $('endBox').classList.remove('hidden');
+  });
+}
+$('goDemo').onclick = () => { if (cfg.team[0] === cfg.team[1]) cfg.team[1] = (cfg.team[0] + 1) % TEAMS.length; gen++; startDemo(); };
+$('goComp').onclick = () => { userPlay(); gen++; startComp(); };
+$('goTrain').onclick = () => { userPlay(); gen++; startSeries('train', trainEnd); };
 
 // ----- Multijoueur : saisie des joueurs -----
 const KINDS = ['Humain', 'Ordi<br>facile', 'Ordi<br>moyen', 'Ordi<br>fort'];
@@ -2487,7 +2632,7 @@ function renderPlayers() {
 $('addP').onclick = () => { if (players.length < 6) { players.push({name: '', club: (players.length * 5) % TEAMS.length, ai: 0}); savePlayers(); renderPlayers(); const ins = $('plist').querySelectorAll('input'); ins[ins.length - 1].focus(); } };
 $('bMultiGo').onclick = () => {
   const list = players.map((p, i) => ({name: (p.name || '').trim().slice(0, 16) || 'Joueur ' + (i + 1), club: p.club, ai: p.ai}));
-  gen++;
+  gen++; userPlay();
   startSeries('multi', multiEnd, list, multiLen === 'short' ? [7] : [6, 7, 8, 9]);
 };
 
