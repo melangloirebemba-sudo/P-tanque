@@ -26,6 +26,11 @@
   canvas#fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:60}
   button{font:inherit;font-weight:800;border:none;color:var(--txt);cursor:pointer;background:none}
   .hidden{display:none!important}
+  #replayBar{position:fixed;z-index:12;left:50%;transform:translateX(-50%);bottom:max(18px,calc(env(safe-area-inset-bottom) + 10px));display:flex;align-items:center;gap:8px;
+    background:rgba(25,29,26,.92);box-shadow:inset 0 0 0 1px var(--line);padding:8px 10px 8px 14px;border-radius:14px;max-width:96vw}
+  #rpLbl{font-weight:900;font-size:13px;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:4px}
+  #rpLbl::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--clay);margin-right:7px;vertical-align:1px;animation:recBlink 1s infinite}
+  @keyframes recBlink{50%{opacity:.2}}
   .wbtn{font-size:12px;font-weight:800;padding:3px 9px;border-radius:8px;margin-left:6px;color:var(--cream);box-shadow:inset 0 0 0 1.5px var(--line);vertical-align:1px}
   .chip.who{max-width:94vw;overflow:hidden;text-overflow:ellipsis}
   .chip:disabled{opacity:.6}
@@ -395,6 +400,12 @@
 <div id="multiBoard" class="hidden"></div>
 <div id="msg" class="hidden"></div>
 <div id="safeProbe"></div>
+<div id="replayBar" class="hidden">
+  <span id="rpLbl">Ralenti</span>
+  <button id="rpSkip" class="btn ghost small">Passer</button>
+  <button id="rpAgain" class="btn ghost small hidden">Revoir</button>
+  <button id="rpGo" class="btn small hidden">Continuer</button>
+</div>
 <div id="controls" class="hidden">
   <div class="chips">
     <button id="cWho" class="chip who"></button>
@@ -533,7 +544,7 @@
     </ul>
     <h3>La partie</h3>
     <p>En <b>tête-à-tête</b>, chaque équipe a 1 joueur et 3 boules ; en <b>doublette</b>, 2 joueurs et 3 boules chacun (6 par équipe). Vous pouvez saisir le nom des joueurs : ils remplacent le nom du club pendant la partie. Le gagnant du tirage au sort choisit le terrain et lance le cochonnet, qui doit tomber entre 6 et 10 m. Sinon l'adversaire le place. L'équipe qui n'a pas le point joue. À la fin de la mène, chaque boule plus proche que la meilleure adverse vaut un point. Partie en 9, 11 ou 13.</p>
-    <p>En doublette, c'est le <b>pointeur</b> qui va au cercle par défaut ; pour envoyer le <b>tireur</b>, touchez « Au cercle ». Un joueur qui sort de son rôle est un peu moins précis.</p>
+    <p>En doublette, c'est le <b>pointeur</b> qui va au cercle par défaut, sauf si l'adversaire a bien pointé : le <b>tireur</b> se présente alors. Touchez « Au cercle » pour échanger les joueurs. Les beaux carreaux et palets sont rejoués au <b>ralenti</b> (Passer, Revoir). Un joueur qui sort de son rôle est un peu moins précis.</p>
     <p><b>Carreau</b> : la boule tirée prend la place de la boule chassée. <b>Palet</b> : elle reste tout près et prend le point. <b>Reculée</b> : avec l'effet rétro, elle revient en arrière après le choc. Le carreau demande un tir <b>au fer</b> bien droit, et même alors il n'est pas garanti.</p>
     <h3>Les terrains</h3>
     <div class="tpick" id="howTerrains"></div>
@@ -630,6 +641,36 @@ let pRem = [[3], [3]], curP = [0, 0], lastP = [0, 0];       // boules restantes 
 const opts = Object.assign({sound: true, vib: true, gauge: 1.4}, (() => { try { return JSON.parse(localStorage.getItem('petanque_opts')) || {}; } catch (e) { return {}; } })());
 const saveOpts = () => { try { localStorage.setItem('petanque_opts', JSON.stringify(opts)); } catch (e) {} };
 let paused = false, flow = {restart: null, quit: null}, lastTeam = 0, crouchAnim = false;
+let rec = null, recNow = 0, rp = null, cer = null, swapAnim = null, lastAISwap = 0;
+const isAITurnFor = t => isMulti() ? !!atel.players[t].ai : isAIteam(t);
+// ----- Ralenti : on enregistre chaque lancer, et on le rejoue lentement si le coup est beau -----
+function snap(o) { return {x: o.x, y: o.y, h: o.h || 0, rot: o.rot || 0, team: o.team, r: o.r, dead: o.dead,
+  air: o.air ? {sx: o.air.sx, sy: o.air.sy, ex: o.air.ex, ey: o.air.ey, t: o.air.t, T: o.air.T, H: o.air.H} : null}; }
+function recFrame() {
+  if (!rec || rec.length > 900) return;
+  rec.push({t: recNow, balls: balls.map(snap), jack: jack ? snap(jack) : null, anim: anim ? {t: anim.t, pow: anim.pow} : null});
+}
+function applyFrame(F) {
+  balls = F.balls.map(o => Object.assign({}, o)); jack = F.jack ? Object.assign({}, F.jack) : null;
+  anim = F.anim ? Object.assign({}, F.anim) : null;
+}
+function startReplay(label, cont) {
+  if (!rec || rec.length < 8) return cont();
+  rp = {t: 0, i: 0, done: false, cont, label, team: current, saved: {balls, jack, anim}};
+  phase = 'replay'; charge = null; pop = null;
+  $('rpLbl').textContent = 'Ralenti · ' + label.replace(/ !$/, '');
+  $('rpSkip').classList.remove('hidden'); $('rpAgain').classList.add('hidden'); $('rpGo').classList.add('hidden');
+  $('replayBar').classList.remove('hidden');
+  updateHUD();
+}
+function endReplay() {
+  if (!rp) return;
+  const r = rp; rp = null;
+  balls = r.saved.balls; jack = r.saved.jack; anim = null;
+  $('replayBar').classList.add('hidden');
+  phase = 'settled';
+  r.cont();
+}
 
 // ---------- Monde (mètres) ----------
 const W = 4, L = 13;
@@ -680,7 +721,11 @@ const ROLES = ['pointeur', 'tireur'];
 function setThrower(t) {
   const r = pRem[t];
   if (r.length === 1) { curP[t] = 0; return; }
-  curP[t] = r[0] > 0 ? 0 : 1;
+  // la boule adverse est bien pointée (moins de 30 cm et elle tient le point) : on envoie le tireur
+  const b = closest(), o = b[1 - t], m = b[t];
+  let want = o && o.d < 0.3 && (!m || o.d < m.d) ? 1 : 0;
+  if (r[want] === 0) want = 1 - want;
+  curP[t] = want;
 }
 const tCol = t => isMulti() ? TEAMS[atel.players[t].club].c : TEAMS[cfg.team[t]].c;
 const shooterTeam = () => isMulti() ? 'p' + current : current;
@@ -1048,8 +1093,8 @@ function person(x, y, opt) {
   if (opt.seated) return seated(x, y, opt);
   const p = P(x, y), s = p.s, u = s * opt.h / 10;
   if (u < 1) return;
-  const now = performance.now() / 1000, cheer = now - cheerT < 1.4;
-  const jump = cheer ? Math.abs(Math.sin((now - cheerT) * 9 + opt.ph)) * 1.2 * u : Math.sin(now * 1.6 + opt.ph) * 0.12 * u;
+  const now = performance.now() / 1000, cheer = !opt.nojump && now - cheerT < 1.4;
+  const jump = opt.walk ? Math.abs(Math.sin(now * 11)) * 0.35 * u : opt.nojump ? 0 : cheer ? Math.abs(Math.sin((now - cheerT) * 9 + opt.ph)) * 1.2 * u : Math.sin(now * 1.6 + opt.ph) * 0.12 * u;
   ctx.save(); ctx.translate(p.X, p.Y);
   ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, 0, 2.1 * u, 0.6 * u, 0, 0, 7); ctx.fill();
   ctx.translate(0, -jump);
@@ -1107,6 +1152,7 @@ const showPop = (txt, col) => {
   else if (/Bien|Réussi|Plein|Reculée|But touché/.test(txt)) { cheerT = performance.now() / 1000; crowdCheer(0.55); }
   else if (/manqué|Manqué|nul|Faute|effleurée|avant l/.test(txt)) crowdOoh();
   pop = {txt, col: col || '#f2ebdd', t: 0};
+  return txt;
 };
 
 function closest() {
@@ -1181,10 +1227,61 @@ function newGame() {
 
 function startMatch(winner, terrain) {
   cfg.terrain = terrain;
-  scores = [0, 0]; starter = winner; menNo = 0;
+  scores = [0, 0]; starter = winner; menNo = 0; balls = []; jack = null; remaining = [3 * perTeam(), 3 * perTeam()];
   makeGravel();
-  $('toss').classList.add('hidden'); $('hud').classList.remove('hidden');
-  scores = [0, 0]; newMene();
+  $('toss').classList.add('hidden');
+  ceremony('start', () => { $('hud').classList.remove('hidden'); newMene(); });
+}
+// ----- Accolades de début et de fin de rencontre -----
+function ceremonyPeople() {
+  if (cfg.mode === 'atelier') {
+    if (!atel) return [];
+    if (atel.players) return atel.players.map((_, i) => tCol(i));
+    return atel.kind === 'duel' ? [tCol(0), tCol(1)] : [];
+  }
+  const A = [], n = perTeam();
+  for (let i = 0; i < n; i++) A.push(tCol(0), tCol(1));
+  return A;
+}
+function ceremony(kind, cont) {
+  const ppl = ceremonyPeople();
+  if (!ppl.length) return cont();
+  cer = {kind, t: 0, dur: 3.2, cont, ppl, prev: phase};
+  phase = 'ceremony'; setMsg(''); $('controls').classList.add('hidden');
+  if (kind === 'end') { crowdCheer(0.8); cheerT = performance.now() / 1000; }
+  else crowdCheer(0.35);
+}
+function endCeremony() {
+  if (!cer) return;
+  const c = cer; cer = null; phase = c.prev === 'ceremony' ? 'menu' : c.prev;
+  c.cont();
+}
+function drawCeremony() {
+  const c = cer, n = c.ppl.length, k = Math.min(1, c.t / 1.1), e = k * k * (3 - 2 * k);
+  const ctr = LAND ? {x: 1.6, y: 3.2} : {x: CIRCLE.x, y: 2.4}, dir = LAND ? {x: 0, y: 1} : {x: 1, y: 0};
+  const gap = lerp(1.5, 0.46, e), sway = c.t > 1.1 ? Math.sin((c.t - 1.1) * 4) * 0.05 : 0;
+  const pts = c.ppl.map((col, i) => { const off = (i - (n - 1) / 2) * gap; return {x: ctr.x + dir.x * off + sway, y: ctr.y + dir.y * off, col}; });
+  pts.forEach((q, i) => person(q.x, q.y, {h: 1.74, ph: i, skin: ['#6b3e22', '#7a4a2a', '#5a321b'][i % 3], hair: 'cap', shirt: q.col, nojump: true, walk: k < 1 ? performance.now() / 1000 : 0}));
+  if (c.t > 1.1) {   // bras sur les épaules des voisins : l'accolade
+    ctx.lineCap = 'round';
+    for (let i = 0; i < n - 1; i++) {
+      const A = P(pts[i].x, pts[i].y), B = P(pts[i + 1].x, pts[i + 1].y), u = A.s * 1.74 / 10;
+      ctx.strokeStyle = '#6b3e22'; ctx.lineWidth = 0.7 * u;
+      ctx.beginPath(); ctx.moveTo(A.X + 1.1 * u, A.Y - 7.6 * u); ctx.quadraticCurveTo((A.X + B.X) / 2, Math.min(A.Y, B.Y) - 8.6 * u, B.X + 0.9 * u, B.Y - 7.9 * u); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(B.X - 1.1 * u, B.Y - 7.6 * u); ctx.quadraticCurveTo((A.X + B.X) / 2, Math.min(A.Y, B.Y) - 8.2 * u, A.X - 0.9 * u, A.Y - 7.9 * u); ctx.stroke();
+    }
+  }
+}
+function drawCeremonyCaption() {
+  if (!cer || cer.t < 1.1) return;
+  const a = Math.min(1, (cer.t - 1.1) * 3), f = fieldCenter();
+  ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '900 ' + Math.min(34, cw / 11) + 'px Nunito, system-ui';
+  const t1 = cer.kind === 'start' ? 'Bon match !' : 'Merci pour le match !';
+  ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(25,29,26,.85)'; ctx.strokeText(t1, f.X, f.Y - 20); ctx.fillStyle = '#f2ebdd'; ctx.fillText(t1, f.X, f.Y - 20);
+  ctx.font = '700 13px Nunito, system-ui'; ctx.globalAlpha = a * .8; ctx.fillStyle = '#f2ebdd';
+  ctx.strokeText('Touchez pour passer', f.X, f.Y + 14); ctx.fillText('Touchez pour passer', f.X, f.Y + 14);
+  ctx.restore();
 }
 
 // ---------- Tirage au sort (jeton qui tourne) ----------
@@ -1309,6 +1406,7 @@ function doThrow(dx, dy, d, type, human, opt = {}) {
   } else lastShot = isJack ? null : {ball: o, pointer: true};
   if (isJack) { jack = o; throwingJack = true; } else { balls.push(o); remaining[current]--; if (cfg.mode !== 'atelier') { pRem[current][curP[current]]--; lastP[current] = curP[current]; } }
   lastAng = Math.atan2(dx, dy); anim = {t: 0, pow: lastPow};
+  rec = []; recNow = 0; recFrame();
   phase = 'moving'; charge = null; setMsg('');
   updateHUD();
 }
@@ -1318,19 +1416,19 @@ const holdsPoint = b => !b.dead && jack && !jack.dead && balls.every(o => o === 
 function judgeShot() {
   const s = lastShot; lastShot = null;
   if (!s || !jack || jack.dead) return;
-  if (s.pointer) { if (!s.ball.dead && measure(s.ball) < 0.06) showPop('Bien pointé !', '#b9d39a'); return; }
+  if (s.pointer) { if (!s.ball.dead && measure(s.ball) < 0.06) return showPop('Bien pointé !', '#b9d39a'); return; }
   const hit = s.ball.shot.hit;
-  if (!hit) { showPop('Tir manqué', '#ff6b6b'); return; }
+  if (!hit) return showPop('Tir manqué', '#ff6b6b');
   const o = hit.other;
-  if (o.team < 0) { showPop('Cochonnet touché !', '#ffb347'); return; }
+  if (o.team < 0) return showPop('Cochonnet touché !', '#ffb347');
   const p0 = s.before.get(o) || o;
   const moved = o.dead ? 99 : dist(o, p0);
   const near = s.ball.dead ? 99 : dist(s.ball, p0);
-  if (near < 0.3 && moved > 0.8) showPop(hit.q > 0.8 && s.ball.shot.recul ? 'CARREAU reculé !' : 'CARREAU !', '#f2ebdd');   // la tireuse prend la place
-  else if (s.ball.shot.recul && moved > 0.8) showPop('Reculée', '#ffffff');               // elle revient en arrière
+  if (near < 0.3 && moved > 0.8) return showPop(hit.q > 0.8 && s.ball.shot.recul ? 'CARREAU reculé !' : 'CARREAU !', '#f2ebdd');   // la tireuse prend la place
+  else if (s.ball.shot.recul && moved > 0.8) return showPop('Reculée', '#ffffff');               // elle revient en arrière
   // Palet : elle reste dans les parages ET prend le point
-  else if (hit.q >= 0.35 && near < 1.2 && moved > 0.8 && holdsPoint(s.ball)) showPop('PALET !', '#f2ebdd');
-  else if (hit.q < 0.35) showPop('Juste effleurée…', '#dddddd');
+  else if (hit.q >= 0.35 && near < 1.2 && moved > 0.8 && holdsPoint(s.ball)) return showPop('PALET !', '#f2ebdd');
+  else if (hit.q < 0.35) return showPop('Juste effleurée…', '#dddddd');
 }
 
 function onSettled() {
@@ -1357,9 +1455,10 @@ function onSettled() {
     updateHUD(); scheduleAI(); return;
   }
   if (cfg.mode === 'atelier') return atelierSettled();
-  judgeShot();
-  if (jack.dead || remaining[0] + remaining[1] === 0) return endMene();
-  decideNext();
+  const label = judgeShot();
+  const go = () => { if (jack.dead || remaining[0] + remaining[1] === 0) return endMene(); decideNext(); };
+  if (label && /CARREAU|PALET/.test(label)) return startReplay(label, go);   // les grands coups méritent un ralenti
+  go();
 }
 
 // Ramène un point dans la zone réglementaire (6 à 10 m du cercle, à 50 cm des bords)
@@ -1440,7 +1539,7 @@ function endMene() {
   if (winner !== null) { scores[winner] += pts; starter = winner; }
   setMsg(''); updateHUD();
   const over = scores[0] >= cfg.win || scores[1] >= cfg.win;
-  later(() => {
+  const showEnd = () => {
     const w = scores[0] > scores[1] ? 0 : 1;
     $('endTitle').textContent = over ? tName(w) + ' gagne !' : 'Fin de la mène ' + menNo;
     $('endText').textContent = text + '  Score : ' + tName(0) + ' ' + scores[0] + ' - ' + scores[1] + ' ' + tName(1);
@@ -1452,10 +1551,20 @@ function endMene() {
     $('menuBtn').onclick = goTitle;
     $('endBox').classList.remove('hidden');
     if (over && !cfg.spectate && (cfg.mode === '2p' || w === 0)) { confetti(160); crowdCheer(1); cheerT = performance.now() / 1000; }
-  }, 1300);
+  };
+  later(() => over ? ceremony('end', showEnd) : showEnd(), 1300);
 }
 
 // ---------- IA ----------
+// valeur de la mène pour l'équipe « me » si elle s'arrêtait maintenant (points marqués, négatif si l'adversaire marque)
+function standing(me, removed) {
+  const op = 1 - me, ds = [[], []];
+  for (const b of balls) if (!b.dead && b !== removed && (b.team === 0 || b.team === 1)) ds[b.team].push(measure(b));
+  ds[0].sort((a, b) => a - b); ds[1].sort((a, b) => a - b);
+  const bm = ds[me].length ? ds[me][0] : Infinity, bo = ds[op].length ? ds[op][0] : Infinity;
+  if (bm === Infinity && bo === Infinity) return 0;
+  return bm < bo ? ds[me].filter(d => d < bo).length : -ds[op].filter(d => d < bm).length;
+}
 function scheduleAI() { if (isAITurn() && (phase === 'aim' || phase === 'cochonnet')) later(aiPlay, 1100); }
 
 function aiPlay() {
@@ -1484,14 +1593,27 @@ function aiPlay() {
   if (opp && !myLead && remaining[op] === 0 && remaining[me] >= 1 && oppPoints >= 2 && Math.random() < 0.6 + 0.15 * cfg.diff) {
     // astuce : l'adversaire n'a plus de boules et va marquer gros -> on tire le cochonnet hors du terrain
     type = 'tir'; opt = {tir: 'fer'};
-  } else if (opp && !myLead) {
-    // l'adversaire tient le point : plus sa boule est collée au cochonnet, plus on a intérêt à tirer
-    const close = opp.d < 0.1 ? 0.85 : opp.d < 0.25 ? 0.65 : opp.d < 0.45 ? 0.35 : 0.08;
-    const keen = close * (remaining[me] >= remaining[op] ? 1 : 0.75) * (oppPoints >= 2 ? 1.15 : 1);
-    if (Math.random() < keen) {
-      type = 'tir'; tx = opp.b.x; ty = opp.b.y;
-      const jackInFront = jack.y < opp.b.y && Math.abs(jack.x - opp.b.x) < 0.25 && opp.b.y - jack.y < 0.6;
-      opt = {tir: jackInFront ? 'sautee' : 'fer'};
+  } else if (opp) {
+    // Comme un vrai joueur : on compare ce que rapporterait chaque tir possible avec ce que rapporterait un point.
+    const now = standing(me, null), skill = [0.45, 0.6, 0.72][cfg.diff];
+    let best = null;
+    for (const b of balls) {
+      if (b.dead || b.team !== op || measure(b) > 1.6) continue;
+      const gain = standing(me, b) - now;                 // points gagnés si cette boule disparaît
+      if (gain <= 0) continue;
+      const dd = Math.hypot(b.x - CIRCLE.x, b.y - CIRCLE.y);
+      let pS = skill - 0.025 * (dd - 7);
+      const jackFront = jack.y < b.y && Math.abs(jack.x - b.x) < 0.25 && b.y - jack.y < 0.6;
+      const ownNear = balls.filter(o => !o.dead && o.team === me && dist(o, b) < 0.45).length;   // risque de chasser ses propres boules
+      if (jackFront) pS -= 0.08;
+      const ev = pS * gain - (1 - pS) * 0.15 - ownNear * 0.35;
+      if (!best || ev > best.ev) best = {b, ev, jackFront};
+    }
+    // valeur d'un point : chance de passer devant la meilleure boule adverse
+    const pP = (opp.d < 0.08 ? 0.15 : opp.d < 0.2 ? 0.35 : opp.d < 0.4 ? 0.55 : 0.75) * (0.7 + 0.15 * cfg.diff);
+    const evPoint = myLead ? 0.1 : pP * (1 - Math.min(0, now)) * 0.9;
+    if (best && best.ev > evPoint && remaining[me] >= 1) {
+      type = 'tir'; tx = best.b.x; ty = best.b.y; opt = {tir: best.jackFront ? 'sautee' : 'fer'};
     }
   }
   if (type === 'pointer') {
@@ -1507,7 +1629,13 @@ function aiPlay() {
     }
   }
   // doublette : on s'entend, le tireur tire et le pointeur pointe (si chacun a encore des boules)
-  if (perTeam() > 1) { const want = type === 'tir' ? 1 : 0; curP[me] = pRem[me][want] > 0 ? want : 1 - want; }
+  if (perTeam() > 1 && !swapAnim && performance.now() - lastAISwap > 2500) {
+    const want0 = type === 'tir' ? 1 : 0, want = pRem[me][want0] > 0 ? want0 : 1 - want0;
+    if (want !== curP[me]) {   // on change de joueur : on le voit entrer dans le cercle, puis il lance
+      swapAnim = {t: 0, dur: 0.9, out: curP[me]}; curP[me] = want; updateHUD(); lastAISwap = performance.now();
+      return later(aiPlay, 1000);
+    }
+  }
   let d = Math.hypot(tx - CIRCLE.x, ty - CIRCLE.y), ang = Math.atan2(tx - CIRCLE.x, ty - CIRCLE.y);
   if (type === 'pointer' && t.bounce) {   // béton : on tient compte du rebond pour ne pas aller trop loin ou trop court
     const pr = PORTEES[opt.portee], est = dd => { const l = dd * pr.f, roll = dd - l, H = pr.H0 + l * pr.Hk; return H > 0.15 ? l + Math.min(1.3, H * t.bounce * 1.5) + roll * 0.7744 : dd; };
@@ -1736,10 +1864,35 @@ function heldBall(x, y, sc) {
 }
 
 const isCrouched = () => cfg.mode !== 'atelier' && (anim ? crouchAnim : phase === 'aim' && !isAITurn() && stance === 'accroupi' && !(charge && charge.type === 'tir'));
+const WAIT = () => ({x: CIRCLE.x - 1.15, y: 0.32});   // le partenaire attend derrière, à gauche
+const lerp = (a, b, k) => a + (b - a) * k;
+function playerPos() {
+  if (!swapAnim) return {x: CIRCLE.x, y: CIRCLE.y};
+  const k = Math.min(1, swapAnim.t / swapAnim.dur), e = k * k * (3 - 2 * k), w = WAIT();
+  return {x: lerp(w.x, CIRCLE.x, e), y: lerp(w.y, CIRCLE.y, e)};
+}
+// joueurs autour : partenaire qui attend, adversaires au bord du terrain derrière le cochonnet
+function drawSideline() {
+  if (cfg.mode === 'atelier' || !scores || phase === 'ceremony') return;
+  const op = 1 - current, now = performance.now() / 1000;
+  if (jack && !jack.dead && ['aim', 'moving', 'replay', 'placer', 'settled'].includes(phase)) {
+    for (let i = 0; i < perTeam(); i++) {
+      const y = Math.min(L + 0.6, jack.y + 0.6 + i * 0.65);
+      person(-0.42, y, {h: 1.74, ph: i + 3, skin: '#6b3e22', hair: 'cap', shirt: tCol(op), nojump: true});
+    }
+  }
+  if (perTeam() > 1) {
+    const w = WAIT();
+    if (swapAnim) {   // celui qui sort marche vers la place d'attente
+      const k = Math.min(1, swapAnim.t / swapAnim.dur), e = k * k * (3 - 2 * k);
+      person(lerp(CIRCLE.x, w.x, e), lerp(CIRCLE.y, w.y, e), {h: 1.74, ph: 0, skin: '#7a4a2a', hair: 'cap', shirt: tCol(current), nojump: true, walk: now});
+    } else if (phase !== 'menEnd') person(w.x, w.y, {h: 1.74, ph: 0, skin: '#7a4a2a', hair: 'cap', shirt: tCol(current), nojump: true});
+  }
+}
 function drawPlayer() {
-  if (!scores) return;
+  if (!scores || phase === 'ceremony') return;
   const shirt = tCol(current), skin = '#7a4a2a';
-  const c = P(CIRCLE.x, CIRCLE.y);
+  const pp = playerPos(), c = P(pp.x, pp.y);
   ctx.lineCap = 'round';
   if (!LAND) {
     // ---- Vue de dos (portrait) ----
@@ -1815,7 +1968,7 @@ function draw() {
   ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.lineWidth = 2.5; ctx.stroke();
   drawCrowd();
 
-  if (cfg.mode === 'atelier' && atel && atel.center) {      // cercle de tir (+ zone d'impact interdite)
+  if (cfg.mode === 'atelier' && atel && atel.center && phase !== 'ceremony') {      // cercle de tir (+ zone d'impact interdite)
     const C = atel.center, pc = P(C.x, C.y), fig = ATELIERS[atel.seq[Math.min(atel.idx, atel.seq.length - 1)].a].fig;
     ctx.fillStyle = 'rgba(255,214,120,.3)'; groundPath(C.x, C.y, RR, 64); ctx.fill();
     if ((fig === 2 || fig === 4) && atel.obst[0]) {
@@ -1870,10 +2023,19 @@ function draw() {
 
   if (phase === 'placer') drawZone();
   if (canAim()) drawAim();
+  drawSideline();
   drawPlayer();
+  if (phase === 'ceremony') drawCeremony();
   objs.filter(o => !o.dead && o.air).forEach(drawObj);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (phase === 'replay') {   // bandes noires de ralenti
+    const bh = Math.round(ch * 0.07);
+    ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, cw, bh); ctx.fillRect(0, ch - bh, cw, bh);
+    const vg = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * .3, cw / 2, ch / 2, Math.max(cw, ch) * .7);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.35)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, cw, ch);
+  }
+  if (phase === 'ceremony') drawCeremonyCaption();
   if (charge) drawGauge();
   if (pop) drawPop();
 }
@@ -1933,7 +2095,7 @@ function drawPop() {
 }
 
 // ---------- Entrées ----------
-const canAim = () => (phase === 'aim' || phase === 'cochonnet') && !isAITurn();
+const canAim = () => (phase === 'aim' || phase === 'cochonnet') && !isAITurn() && !swapAnim;
 // écran -> monde
 // (toWorld : voir la caméra 3D)
 
@@ -1945,6 +2107,7 @@ function steer(e) {
   const n = Math.hypot(dx, dy); aimDir = {dx: dx / n, dy: dy / n};
 }
 cv.addEventListener('pointerdown', e => {
+  if (phase === 'ceremony') { endCeremony(); return; }
   if (phase === 'placer' && !isAITurn()) { const w = toWorld(e.clientX, e.clientY); placeJack(w.x, w.y); return; }
   if (!canAim() || charge) return;
   steering = true; cv.setPointerCapture(e.pointerId); steer(e);
@@ -1998,6 +2161,7 @@ $('cWho').onclick = () => {
   const o = 1 - curP[current];
   if (pRem[current][o] === 0) return;
   const before = throwerName(current);
+  swapAnim = {t: 0, dur: 0.9, out: curP[current]};
   curP[current] = o;
   const m = $('msg'); if (m.textContent) setMsg(m.textContent.replace(before, throwerName(current)));
   updateHUD();
@@ -2040,7 +2204,8 @@ function startSeries(kind, onEnd, players, dists) {
   scores = [0, 0]; menNo = 0; parts = []; pop = null;
   flow = {restart: () => startSeries(kind, onEnd, players, dists),
           quit: kind === 'multi' ? () => { document.body.classList.remove('multi'); show('scrMulti'); } : kind === 'train' || (cfg.watch && cfg.watch.type === 'demo') ? goTitle : showComp};
-  setupShot();
+  balls = []; jack = null; atel.center = null;
+  if (kind === 'duel' || kind === 'multi') ceremony('start', setupShot); else setupShot();
 }
 
 function setupShot() {
@@ -2093,7 +2258,7 @@ function atelierSettled() {
   }
   showPop(txt, pts === 5 ? '#f2ebdd' : pts >= 3 ? '#b9d39a' : pts === 1 ? '#f2ebdd' : '#e8907f');
   phase = 'atelWait'; updateHUD();
-  later(nextShot, 1800);
+  if (pts === 5) startReplay(txt, () => later(nextShot, 400)); else later(nextShot, 1800);
 }
 
 function nextShot() {
@@ -2157,7 +2322,7 @@ function leaders(ids, key) {
 function seriesEnd() {
   phase = 'menEnd'; setMsg(''); $('controls').classList.add('hidden');
   const at = atel;
-  later(() => at.onEnd(at), 900);
+  later(() => (at.kind === 'duel' || at.kind === 'multi') ? ceremony('end', () => at.onEnd(at)) : at.onEnd(at), 900);
 }
 
 // ----- Entraînement -----
@@ -2643,6 +2808,9 @@ $('bResetData').onclick = () => {
 };
 
 // ----- Pause -----
+$('rpSkip').onclick = () => endReplay();
+$('rpGo').onclick = () => endReplay();
+$('rpAgain').onclick = () => { if (!rp) return; rp.t = 0; rp.i = 0; rp.done = false; $('rpSkip').classList.remove('hidden'); $('rpAgain').classList.add('hidden'); $('rpGo').classList.add('hidden'); };
 $('btnPause').onclick = () => {
   if (phase === 'menu') return;
   paused = true; charge = null;
@@ -2709,7 +2877,18 @@ function loop(t) {
   if (phase === 'moving') {
     const n = Math.max(1, Math.ceil(dt * 300)), h = dt / n;
     for (let i = 0; i < n; i++) step(h);
-    if (stopped()) onSettled();
+    if (rec) { recNow += dt; recFrame(); }
+    if (stopped()) { if (rec) { for (let k = 0; k < 20; k++) { recNow += 0.03; recFrame(); } } onSettled(); }
+  }
+  if (phase === 'ceremony' && cer) { cer.t += dt; if (cer.t > cer.dur) endCeremony(); }
+  if (swapAnim) { swapAnim.t += dt; if (swapAnim.t > swapAnim.dur) swapAnim = null; }
+  if (phase === 'replay' && rp) {
+    rp.t += dt * 0.33;                                   // un tiers de la vitesse réelle
+    const T0 = rp.t, F = rec;
+    let i = rp.i; while (i < F.length - 1 && F[i + 1].t <= T0) i++; rp.i = i;
+    applyFrame(F[i]);
+    if (!rp.done && i >= F.length - 1) { rp.done = true; $('rpSkip').classList.add('hidden'); $('rpAgain').classList.remove('hidden'); $('rpGo').classList.remove('hidden'); $('rpLbl').textContent = 'Ralenti'; rp.wait = cfg.spectate || isAITurnFor(rp.team) ? 2.5 : 9; }
+    if (rp.done) { rp.wait -= dt; if (rp.wait <= 0) endReplay(); }
   }
   draw(); drawFx(dt);
   requestAnimationFrame(loop);
