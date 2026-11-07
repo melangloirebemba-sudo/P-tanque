@@ -1,14 +1,20 @@
 name: Construire l'APK
 
 # Se lance à chaque envoi sur la branche main, ou à la main depuis l'onglet « Actions ».
+# À chaque construction réussie, une release « Cochonnet d'Or 1.2.N » est publiée avec CochonnetDOr.apk.
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write   # nécessaire pour publier les releases
+
 jobs:
   apk:
     runs-on: ubuntu-latest
+    env:
+      VERSION: 1.2.${{ github.run_number }}
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v4
@@ -36,6 +42,16 @@ jobs:
           grep -q 'android.permission.VIBRATE' $M || sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.VIBRATE" />#' $M
           grep -n 'permission' $M
 
+      - name: Numéro de version
+        run: |
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"$VERSION\"/" android/app/build.gradle
+          grep -n 'versionCode\|versionName' android/app/build.gradle
+
+      - name: Toujours la même clé de signature (pour installer les mises à jour par-dessus)
+        run: |
+          mkdir -p ~/.android
+          cp keystore/debug.keystore ~/.android/debug.keystore
+
       - name: Générer l'icône et l'écran de démarrage
         run: npx capacitor-assets generate --android
 
@@ -47,10 +63,26 @@ jobs:
           chmod +x android/gradlew
           cd android
           ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../CochonnetDOr.apk
 
-      - name: Mettre l'APK en téléchargement
+      - name: Mettre l'APK en téléchargement (onglet Actions)
         uses: actions/upload-artifact@v4
         with:
-          name: cochonnet-dor-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: CochonnetDOr
+          path: CochonnetDOr.apk
           if-no-files-found: error
+
+      - name: Publier la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGE: ${{ github.event.head_commit.message || 'construction manuelle' }}
+        run: |
+          {
+            echo "Cochonnet d'Or - by L'insomniaque"
+            echo
+            echo "Téléchargez **CochonnetDOr.apk** ci-dessous, puis ouvrez-le sur votre téléphone Android pour l'installer."
+            echo "Les nouvelles versions s'installent par-dessus l'ancienne, sans perdre vos records ni votre championnat."
+            echo
+            echo "**Modification :** $(printf '%s' "$CHANGE" | head -n 1)"
+          } > notes.md
+          gh release create "v$VERSION" CochonnetDOr.apk --title "Cochonnet d'Or $VERSION" --notes-file notes.md --latest

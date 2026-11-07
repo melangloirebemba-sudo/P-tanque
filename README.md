@@ -25,10 +25,15 @@ Application Android construite avec **Capacitor**, et APK fabriqué automatiquem
    en tapant le chemin `.github/workflows/build-apk.yml` et en collant son contenu.
 3. **Onglet « Actions »** : la construction démarre toute seule (environ 5 à 10 minutes).
    Vous pouvez aussi la lancer à la main avec *Construire l'APK → Run workflow*.
-4. **Téléchargez l'APK** : ouvrez la construction terminée (coche verte), en bas de la page,
-   section *Artifacts*, téléchargez `cochonnet-dor-apk`. C'est un zip qui contient `app-debug.apk`.
-   Copiez-le sur le téléphone et ouvrez-le pour l'installer (autorisez l'installation
+4. **Téléchargez l'APK** : ouvrez la page **Releases** du dépôt (colonne de droite sur GitHub)
+   et touchez **CochonnetDOr.apk** dans la dernière version. Lien direct vers la dernière version :
+   `https://github.com/<votre-pseudo>/<votre-dépôt>/releases/latest/download/CochonnetDOr.apk`
+   Ouvrez le fichier sur le téléphone pour l'installer (autorisez l'installation
    depuis des sources inconnues si Android le demande).
+
+Chaque construction réussie publie une release « Cochonnet d'Or 1.2.N ». Toutes les versions sont
+signées avec la même clé de test (`keystore/debug.keystore`) : une nouvelle version s'installe
+par-dessus l'ancienne, sans perdre les records ni le championnat.
 
 ## Mettre le jeu à jour
 
