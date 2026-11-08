@@ -1043,7 +1043,7 @@ function buildCrowd() {
   crowd = list;
 }
 const referee = () => {
-  if (cfg.mode === 'atelier' && atel && atel.center) return LAND ? {x: W - 0.7, y: L + 0.75} : {x: W + 0.75, y: atel.center.y - 0.6};
+  if (cfg.mode === 'atelier' && atel && atel.center) return LAND ? {x: W + 0.55, y: atel.center.y} : {x: W + 0.75, y: atel.center.y};   // à hauteur du cercle des cibles
   return LAND ? {x: W - 0.7, y: L + 0.75} : {x: W + 0.7, y: 6.0};
 };
 // place d'un adversaire qui attend : du côté de l'arbitre, où il n'y a pas de public
@@ -1133,7 +1133,9 @@ function seatedSide(x, y, opt) {
   ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(0.25 * u, -8.65 * u, 0.13 * u, 0, 7); ctx.fill();   // oeil
   ctx.restore();
 }
-const coachSpot = () => LAND ? {x: W + 0.3, y: CIRCLE.y - 0.5} : {x: CIRCLE.x + 1.25, y: CIRCLE.y - 0.72};   // juste derrière le tireur
+// le coach reste assis à sa place, au niveau du pas de tir le plus éloigné (9 m) : il ne déplace pas sa chaise
+const coachSpot = () => { const y0 = cfg.mode === 'atelier' && atel ? throwY(atelMaxD()) : CIRCLE.y;
+  return LAND ? {x: W + 0.3, y: y0 - 0.5} : {x: CIRCLE.x + 1.25, y: y0 - 0.72}; };
 
 function person(x, y, opt) {
   if (opt.seated) return seated(x, y, opt);
@@ -1628,7 +1630,10 @@ function aiPlay() {
   if (cfg.mode === 'atelier') {
     if (phase !== 'aim') return;
     const tg = atel.target, sk = isMulti() ? [0, 0.45, 0.65, 0.85][atel.players[current].ai] : comp ? comp.skill[cfg.team[current]] : 0.6;
-    const d = Math.hypot(tg.x - CIRCLE.x, tg.y - CIRCLE.y) + 0.22 + gauss() * 0.18;
+    const fig = ATELIERS[atel.seq[atel.idx].a].fig;
+    // point de chute visé : sur la cible, et toujours derrière la ligne de l'obstacle quand il y en a une
+    const aimY = Math.max(tg.y - tg.r * 0.5, atel.line + 0.08);
+    const d = Math.hypot(tg.x - CIRCLE.x, aimY - CIRCLE.y) + 0.25 + gauss() * (0.16 - sk * 0.08) * (fig === 5 ? 0.8 : 1);
     const ang = Math.atan2(tg.x - CIRCLE.x, tg.y - CIRCLE.y) + gauss() * (0.05 - sk * 0.03);
     lastPow = 0.8;
     return doThrow(Math.sin(ang), Math.cos(ang), d, 'tir', false, {tir: 'fer'});
@@ -2044,12 +2049,17 @@ function draw() {
     ctx.fillStyle = 'rgba(255,214,120,.3)'; groundPath(C.x, C.y, RR, 64); ctx.fill();
     if ((fig === 2 || fig === 4) && atel.obst[0]) {
       ctx.save(); groundPath(C.x, C.y, RR, 64); ctx.clip();
-      const q = [P(C.x - RR, C.y - RR), P(C.x + RR, C.y - RR), P(C.x + RR, atel.obst[0].y), P(C.x - RR, atel.obst[0].y)];
+      const q = [P(C.x - RR, C.y - RR), P(C.x + RR, C.y - RR), P(C.x + RR, atel.line), P(C.x - RR, atel.line)];
       ctx.fillStyle = 'rgba(255,90,40,.35)'; ctx.beginPath(); q.forEach((p, i) => i ? ctx.lineTo(p.X, p.Y) : ctx.moveTo(p.X, p.Y)); ctx.fill();
       ctx.restore();
     }
     ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2;
     groundPath(C.x, C.y, RR, 64); ctx.stroke();
+    if (atel.mark && phase === 'atelWait') {   // trace de l'impact : verte si valable, rouge si nulle
+      ctx.fillStyle = atel.mark.ok ? 'rgba(60,140,60,.9)' : 'rgba(200,50,40,.9)';
+      groundPath(atel.mark.x, atel.mark.y, 0.07); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
   }
   if (cfg.mode !== 'atelier' && jack && !jack.dead && (phase === 'aim' || phase === 'menEnd')) {
     const best = closest(), pj = P(jack.x, jack.y);
@@ -2108,6 +2118,7 @@ function draw() {
   }
   if (phase === 'ceremony') drawCeremonyCaption();
   if (charge) drawGauge();
+  drawCoachSay();
   if (pop) drawPop();
 }
 
@@ -2147,6 +2158,76 @@ function drawGauge() {
   ctx.fillStyle = g; const fh = charge.pow * h; ctx.fillRect(x, y + h - fh, w, fh);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.fillText('Force', x + w / 2, y - 8);
+}
+
+// ---------- Le coach parle ----------
+const pick = a => a[Math.floor(Math.random() * a.length)];
+function coachSay(txt, delay = 0) {
+  if (!atel) return;
+  const g = gen;
+  const go = () => { if (g === gen && atel) atel.say = {txt, t: performance.now() / 1000}; };
+  delay ? setTimeout(go, delay) : go();
+}
+const COACH_TIPS = {
+  1: ['Boule seule : vise-la pleine, au fer.', 'Regarde bien la boule, tombe dessus.', 'Reste bien droit, elle est pour toi.'],
+  2: ['Passe au-dessus du but, tombe juste derrière.', 'Un peu plus haut pour franchir le but.', 'Ne tombe pas devant le but, vise la boule.'],
+  3: ['Bien droit au milieu, ne touche pas les côtés.', 'Le couloir est étroit : reste droit.', 'Pleine boule, sans toucher les voisines.'],
+  4: ['Tire plus haut, tombe derrière la première boule.', 'Ne touche pas la boule de devant.', 'Prends de la hauteur, vise celle du fond.'],
+  5: ['Le but est petit : prends ton temps.', 'Vise le but, pas la terre devant.', 'Calme, bien droit sur le but.']
+};
+function coachBefore() {
+  const sp = atel.seq[atel.idx], fig = ATELIERS[sp.a].fig, w = sp.who;
+  let txt = pick(COACH_TIPS[fig]);
+  if (atel.kind === 'duel' && !atel.barrage) {
+    const me = atel.sc[w].s, op = atel.sc[1 - w].s;
+    if (op - me >= 4) txt = pick(['On est en retard : fais un effort maintenant !', 'Il faut remonter, vas-y, tu peux le faire !']);
+    else if (me - op >= 4) txt = pick(['On mène, garde ton geste.', 'Continue comme ça, reste concentré.']);
+  }
+  if (sp.d === atelMaxD() && atel.dists.length > 1 && Math.random() < 0.4) txt = 'Dernier pas de tir, ' + txt.charAt(0).toLowerCase() + txt.slice(1);
+  coachSay(txt, 600);
+}
+function coachAfter(pts, miss) {
+  let txt;
+  if (pts === 5) txt = pick(['Bien tiré ! Magnifique !', 'Bien tiré ! C\'est ça !', 'Superbe, bien tiré !']);
+  else if (pts === 3) txt = pick(['Bien tiré ! Un peu plus de rétro pour le carreau.', 'Bien tiré, continue !']);
+  else if (pts === 1) txt = pick(['Touché ! Prends-la plus pleine.', 'Pas loin, sois un peu plus droit.']);
+  else if (miss === 'court') txt = pick(['Un peu plus long !', 'Ne stresse pas, un peu plus long.', 'Tu tombes court, un peu plus long.']);
+  else if (miss === 'long') txt = pick(['Un peu moins long.', 'Trop long, raccourcis un peu.']);
+  else if (miss === 'gauche' || miss === 'droite') txt = pick(['Sois droit !', 'Reste droit, ne stresse pas.', 'Un peu à ' + miss + ', reste droit.']);
+  else if (miss === 'obstacle') txt = pick(['Plus haut, passe l\'obstacle.', 'Tu tombes devant, prends plus de hauteur.']);
+  else if (miss === 'ligne') txt = pick(['Sur la ligne ! Un poil plus dedans.', 'Juste sur le trait, ne stresse pas.']);
+  else txt = pick(['Ne stresse pas, vas-y, tu peux le faire !', 'Respire, la prochaine est pour toi.']);
+  if (pts < 3 && atel.kind === 'duel' && !atel.barrage) {
+    const w = atel.seq[atel.idx].who;
+    if (atel.sc[1 - w].s - atel.sc[w].s >= 4) txt += ' Fais un effort, on est en retard !';
+  }
+  coachSay(txt, 1300);   // il parle quand l'annonce de l'arbitre s'efface
+}
+function drawCoachSay() {
+  if (!atel || !atel.say || cfg.mode !== 'atelier' || phase === 'ceremony') return;
+  const age = performance.now() / 1000 - atel.say.t;
+  if (age > 3.2) { atel.say = null; return; }
+  const c = coachSpot(), p = P(c.x, c.y), u = p.s * 1.72 / 10;
+  const a = age < 2.7 ? Math.min(1, age * 6) : Math.max(0, 1 - (age - 2.7) / 0.5);
+  const fs = Math.max(12, Math.min(16, cw / 28));
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.font = '700 ' + fs + 'px system-ui';
+  // découpe en lignes
+  const maxW = Math.min(240, cw * 0.55), words = atel.say.txt.split(' '), lines = [];
+  let line = '';
+  for (const wd of words) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = wd; } else line = t; }
+  lines.push(line);
+  const bw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 20, bh = lines.length * (fs + 4) + 14;
+  let bx = p.X - bw / 2, by = p.Y - 11 * u - bh - 14;
+  bx = Math.max(8, Math.min(cw - bw - 8, bx)); by = Math.max(70, by);
+  ctx.fillStyle = '#fbf8f1'; ctx.strokeStyle = 'rgba(30,30,30,.55)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 10) : ctx.rect(bx, by, bw, bh); ctx.fill(); ctx.stroke();
+  const tx = Math.max(bx + 14, Math.min(bx + bw - 14, p.X));
+  ctx.beginPath(); ctx.moveTo(tx - 7, by + bh - 1); ctx.lineTo(tx, by + bh + 10); ctx.lineTo(tx + 7, by + bh - 1); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(tx - 7, by + bh); ctx.lineTo(tx, by + bh + 10); ctx.lineTo(tx + 7, by + bh); ctx.stroke();
+  ctx.fillStyle = '#1f2421'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  lines.forEach((l, i) => ctx.fillText(l, bx + bw / 2, by + 8 + i * (fs + 4)));
+  ctx.restore();
 }
 
 function drawPop() {
@@ -2297,7 +2378,10 @@ function setupShot() {
     else if (it.t === 'target') { const b = mk(it, false, 2); balls.push(b); atel.target = b; }
     else { const b = mk(it, false, 3); balls.push(b); atel.obst.push(b); }
   }
+  atel.line = atel.obst[0] ? atel.obst[0].y + atel.obst[0].r : -99;   // l'impact doit être derrière cette ligne (ateliers 2 et 4)
+  atel.mark = null;
   remaining = [99, 99]; current = sp.who; phase = 'aim'; aimDir = {dx: 0, dy: 1};
+  coachBefore();
   if (atel.kind === 'multi' && !isAITurn() && atel.n > 1) showPop('À ' + atel.players[current].name + ' !', tCol(current));
   setMsg((atel.barrage ? 'Barrage · ' : '') + 'Atelier ' + (sp.a + 1) + ' · ' + ATELIERS[sp.a].n + ' · ' + sp.d + ' m - ' + ATELIERS[sp.a].tip +
     (atel.n > 1 ? ' - à ' + tName(current) + ' de tirer' : ''));
@@ -2305,20 +2389,33 @@ function setupShot() {
 }
 
 // Arbitrage d'un tir selon le barème officiel (0, 1, 3 ou 5 points)
+// Règlement : l'impact (la trace au sol) doit être entièrement dans le cercle, il est nul s'il touche la ligne.
+// Une boule « sort » du cercle quand elle l'a complètement quitté ; une boule qui mord la ligne est encore dedans.
+const MARK = 0.025 * KA;   // rayon de la trace laissée au sol par la boule
 function scoreShot() {
   const s = lastShot; lastShot = null;
   const sh = s && s.ball, sp = atel.seq[atel.idx], fig = ATELIERS[sp.a].fig, C = atel.center, tg = atel.target;
-  const outC = o => o.dead || dist(o, C) > RR;
+  const outC = o => o.dead || dist(o, C) - o.r >= RR;
   const imp = sh && sh.shot && sh.shot.impact, hit = sh && sh.shot && sh.shot.hit;
-  if (!imp || dist(imp, C) + sh.r > RR) return [0, 'Tir nul : impact hors du cercle'];
-  if ((fig === 2 || fig === 4) && imp.y <= atel.obst[0].y) return [0, 'Impact avant l\'obstacle : 0'];
-  if (!hit) return [0, 'Manqué : 0'];
+  atel.mark = imp ? {x: imp.x, y: imp.y, ok: true} : null; atel.miss = null;
+  if (!imp) { atel.miss = 'court'; return [0, 'Tir nul : pas d\'impact dans le cercle']; }
+  const di = dist(imp, C);
+  if (di + MARK >= RR) {
+    atel.mark.ok = false;
+    const along = imp.y - C.y, side = imp.x - C.x;
+    atel.miss = di - MARK < RR ? 'ligne' : Math.abs(side) > Math.abs(along) * 0.8 ? (side < 0 ? 'gauche' : 'droite') : along < 0 ? 'court' : 'long';
+    const gap = Math.round(Math.abs(di - RR) / KA * 100);
+    return [0, atel.miss === 'ligne' ? 'Tir nul : impact sur la ligne' : 'Tir nul : impact ' + (atel.miss === 'court' ? 'devant' : atel.miss === 'long' ? 'derrière' : 'à ' + atel.miss) + ' le cercle (' + gap + ' cm)'];
+  }
+  if ((fig === 2 || fig === 4) && imp.y - MARK <= atel.line) { atel.mark.ok = false; atel.miss = 'obstacle'; return [0, 'Impact avant l\'obstacle : 0']; }
+  if (!hit) { atel.miss = Math.abs(imp.x - C.x) > 0.05 ? (imp.x < C.x ? 'gauche' : 'droite') : 'long'; return [0, 'Manqué : 0']; }
+  if (hit.other !== tg) atel.miss = fig === 3 ? (imp.x < C.x ? 'gauche' : 'droite') : 'obstacle';
   if (hit.other !== tg) return [0, 'Obstacle touché en premier : 0'];
   if (fig === 5) return outC(tg) ? [5, 'But sorti ! +5'] : [3, 'But touché ! +3'];
   const obstTouched = atel.contacts.some(([a, b]) => atel.obst.includes(a) || atel.obst.includes(b));
   const tOut = outC(tg), sOut = outC(sh);
   if (obstTouched) {
-    if (fig === 3 && atel.obst.some(outC)) return [0, 'Boule obstacle sortie : 0'];
+    if (fig === 3 && atel.obst.some(outC)) return [0, tOut ? 'Cible et obstacle sortis : 0' : 'Boule obstacle sortie : 0'];
     return [1, 'Touché, obstacle frappé ensuite : +1'];
   }
   if (!tOut) return [1, 'Touché, la cible reste dans le cercle : +1'];
@@ -2334,8 +2431,9 @@ function atelierSettled() {
     if (pts === 5) S.n5++; else if (pts === 3) S.n3++; else if (pts === 1) S.n1++;
   }
   showPop(txt, pts === 5 ? '#f2ebdd' : pts >= 3 ? '#b9d39a' : pts === 1 ? '#f2ebdd' : '#e8907f');
+  coachAfter(pts, atel.miss);
   phase = 'atelWait'; updateHUD();
-  if (pts >= 3) startReplay(txt, () => later(nextShot, 400)); else later(nextShot, 1800);
+  if (pts >= 3) startReplay(txt, () => later(nextShot, 900)); else later(nextShot, 3000);
 }
 
 function nextShot() {
