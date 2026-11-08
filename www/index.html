@@ -923,7 +923,11 @@ function groundEll(x, y, r) {
 }
 const fieldCenter = () => P(W / 2, L * 0.55);
 
+let resizeRetry = null;
 function resize() {
+  // Au tout premier lancement de l'application, la vue Android peut encore mesurer 0 × 0 :
+  // on attend qu'elle ait sa vraie taille au lieu de construire un terrain vide (ce qui bloquait le jeu).
+  if (!(innerWidth > 50 && innerHeight > 50)) { clearTimeout(resizeRetry); resizeRetry = setTimeout(resize, 120); return; }
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   cw = innerWidth; ch = innerHeight;
   cv.width = cw * dpr; cv.height = ch * dpr;
@@ -3154,10 +3158,19 @@ function drawFx(dt) {
 
 
 // ---------- Boucle ----------
-let last = performance.now();
+let last = performance.now(), loopErr = 0;
 function loop(t) {
-  const dt = Math.min(0.05, (t - last) / 1000); last = t;
-  if (paused) { draw(); drawFx(dt); requestAnimationFrame(loop); return; }
+  requestAnimationFrame(loop);   // la boucle continue quoi qu'il arrive
+  try { frame(t); } catch (e) {
+    if (loopErr++ < 3) console.error(e);
+  }
+}
+function frame(t) {
+  const dt = Math.max(0, Math.min(0.05, (t - last) / 1000)); last = t;
+  // la taille de l'écran a changé sans prévenir (premier lancement, barre système, rotation) : on recadre
+  if (innerWidth > 50 && innerHeight > 50 && (innerWidth !== cw || innerHeight !== ch)) resize();
+  if (!cw || !ch || !CAM) return;
+  if (paused) { draw(); drawFx(dt); return; }
   if (anim) { anim.t += dt; if (anim.t > 0.75) anim = null; }
   if (charge) { charge.t += dt; const p = (charge.t / opts.gauge) % 2; charge.pow = p <= 1 ? p : 2 - p; }
   updFx(dt);
@@ -3181,11 +3194,12 @@ function loop(t) {
     if (rp.done) { rp.wait -= dt; if (rp.wait <= 0) endReplay(); }
   }
   draw(); drawFx(dt);
-  requestAnimationFrame(loop);
 }
 addEventListener('resize', () => { resize(); });
-resize();
-goTitle();
+addEventListener('orientationchange', () => setTimeout(resize, 200));
+if (window.visualViewport) visualViewport.addEventListener('resize', () => resize());
+try { resize(); } catch (e) { console.error(e); }
+try { goTitle(); } catch (e) { console.error(e); }
 requestAnimationFrame(loop);
 
 // Écran de démarrage : disparaît après le chargement (ou au toucher)
