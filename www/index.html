@@ -209,6 +209,10 @@
   .bk b.w{color:var(--gold)}
   .bk>b:first-child{color:var(--txt);font-family:var(--disp);font-weight:400;font-size:16px;letter-spacing:.3px}
   .big{font-family:var(--disp);font-size:28px;text-align:center;margin:0}
+  .trophy-wrap{width:150px;height:180px;display:flex;align-items:center;justify-content:center}
+  .trophy{width:140px;height:175px;animation:trIn .7s cubic-bezier(.2,1.4,.4,1) both}
+  @keyframes trIn{from{transform:translateY(40px) scale(.3);opacity:0}to{transform:none;opacity:1}}
+  #trophyBox{justify-content:center;background:#151a16}
   .podium{display:flex;align-items:flex-end;justify-content:center;gap:8px;width:100%;max-width:420px;margin:6px 0 4px}
   .pod{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
   .pod .who{font-weight:900;font-size:13px;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -611,6 +615,27 @@
   </div>
 </div>
 
+<!-- ======= Remise du trophée ======= -->
+<div class="screen center hidden" id="trophyBox" style="z-index:45">
+  <div class="trophy-wrap">
+    <svg class="trophy" viewBox="0 0 120 150" aria-hidden="true">
+      <path d="M30 22 H14 a4 4 0 0 0-4 4 v8 c0 16 12 26 26 27" fill="none" stroke="#b07f2a" stroke-width="7" stroke-linecap="round"/>
+      <path d="M90 22 H106 a4 4 0 0 1 4 4 v8 c0 16-12 26-26 27" fill="none" stroke="#b07f2a" stroke-width="7" stroke-linecap="round"/>
+      <path d="M28 14 H92 V44 c0 20-14 36-32 36 S28 64 28 44 z" fill="#d9a441"/>
+      <path d="M60 14 H92 V44 c0 20-14 36-32 36 z" fill="#c38f32"/>
+      <rect x="53" y="79" width="14" height="20" fill="#b07f2a"/>
+      <rect x="40" y="97" width="40" height="9" rx="2" fill="#c38f32"/>
+      <rect x="30" y="106" width="60" height="32" rx="3" fill="#4a3424"/>
+      <rect x="40" y="114" width="40" height="15" rx="2" fill="#e8e1d0"/>
+      <path d="m60 28 4 8 9 1.3-6.5 6.3 1.5 9-8-4.3-8 4.3 1.5-9L47 37.3l9-1.3z" fill="#f4e6c4"/>
+    </svg>
+  </div>
+  <p class="lead" id="trSub" style="margin:0"></p>
+  <h2 id="trName" style="margin:0"></h2>
+  <p id="trTxt" style="margin:0;color:var(--mute);text-align:center;max-width:320px"></p>
+  <button class="btn" id="trGo">Continuer</button>
+</div>
+
 <!-- ======= Fin de mène / de partie / de série ======= -->
 <div class="screen center hidden" id="endBox" style="z-index:25">
   <h2 id="endTitle"></h2>
@@ -797,6 +822,31 @@ function crowdCheer(k) {
     const cg = AC.createGain(); cg.gain.value = (0.18 + Math.random() * 0.2) * (0.5 + k * 0.5);
     cs.connect(cf).connect(cg).connect(AC.destination); cs.start(st);
   }
+}
+// le public scande : trois salves de claquements ensemble, puis une clameur
+function crowdChant() {
+  if (!AC || !opts.sound) return;
+  const t0 = AC.currentTime;
+  for (let r = 0; r < 2; r++) for (let b = 0; b < 3; b++) {
+    const beat = t0 + r * 1.1 + b * 0.3;
+    for (let i = 0; i < 26; i++) {
+      const st = beat + Math.random() * 0.03;
+      const m = Math.floor(AC.sampleRate * 0.025), cb = AC.createBuffer(1, m, AC.sampleRate), cd = cb.getChannelData(0);
+      for (let j = 0; j < m; j++) cd[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / m, 3);
+      const cs = AC.createBufferSource(); cs.buffer = cb;
+      const cf = AC.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 900 + Math.random() * 1500; cf.Q.value = 1.2;
+      const cg = AC.createGain(); cg.gain.value = 0.16 + Math.random() * 0.12;
+      cs.connect(cf).connect(cg).connect(AC.destination); cs.start(st);
+    }
+    // « hé ! » de la foule sur chaque temps
+    const n = Math.floor(AC.sampleRate * 0.22), buf = AC.createBuffer(1, n, AC.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const src = AC.createBufferSource(); src.buffer = buf;
+    const f1 = AC.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 2; f1.frequency.value = 700;
+    const g = AC.createGain(); g.gain.setValueAtTime(0.0001, beat); g.gain.exponentialRampToValueAtTime(0.3, beat + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, beat + 0.22);
+    src.connect(f1).connect(g).connect(AC.destination); src.start(beat);
+  }
+  setTimeout(() => crowdCheer(1), 2100);
 }
 function crowdOoh() {
   if (!AC || !opts.sound) return;
@@ -1608,6 +1658,7 @@ function endMene() {
     $('menuBtn').onclick = goTitle;
     $('endBox').classList.remove('hidden');
     if (over && !cfg.spectate && (cfg.mode === '2p' || w === 0)) { confetti(160); crowdCheer(1); cheerT = performance.now() / 1000; cheerTeam = w; }
+    if (over && !inChamp) giveTrophy(tName(w), tCol(w), 'Vainqueur de la partie' + (perTeam() > 1 ? ' en doublette' : ''), 'Score final : ' + scores[w] + ' - ' + scores[1 - w] + '.');
   };
   later(() => over ? ceremony('end', showEnd) : showEnd(), 1300);
 }
@@ -2120,6 +2171,7 @@ function draw() {
   if (charge) drawGauge();
   drawCoachSay();
   if (pop) drawPop();
+  drawFun();
 }
 
 // Flèche de direction courte : aucune cible, aucune distance
@@ -2190,10 +2242,15 @@ function coachAfter(pts, miss) {
   let txt;
   if (pts === 5) txt = pick(['Bien tiré ! Magnifique !', 'Bien tiré ! C\'est ça !', 'Superbe, bien tiré !']);
   else if (pts === 3) txt = pick(['Bien tiré ! Un peu plus de rétro pour le carreau.', 'Bien tiré, continue !']);
-  else if (pts === 1) txt = pick(['Touché ! Prends-la plus pleine.', 'Pas loin, sois un peu plus droit.']);
+  else if (pts === 1) txt = atel.side === 'gauche' ? 'Touchée sur sa gauche : vise un peu plus à droite, plus pleine.'
+    : atel.side === 'droite' ? 'Touchée sur sa droite : vise un peu plus à gauche, plus pleine.'
+    : pick(['Touché ! Prends-la plus pleine.', 'Bien dans l\'axe, tombe un peu plus sur la boule.']);
   else if (miss === 'court') txt = pick(['Un peu plus long !', 'Ne stresse pas, un peu plus long.', 'Tu tombes court, un peu plus long.']);
   else if (miss === 'long') txt = pick(['Un peu moins long.', 'Trop long, raccourcis un peu.']);
-  else if (miss === 'gauche' || miss === 'droite') txt = pick(['Sois droit !', 'Reste droit, ne stresse pas.', 'Un peu à ' + miss + ', reste droit.']);
+  else if (miss === 'gauche') txt = pick(['Tu es parti à gauche : reviens un peu à droite.', 'Trop à gauche ! Sois droit, corrige vers la droite.']);
+  else if (miss === 'droite') txt = pick(['Tu es parti à droite : reviens un peu à gauche.', 'Trop à droite ! Sois droit, corrige vers la gauche.']);
+  else if (miss === 'obst-gauche') txt = 'Tu as touché la boule de gauche : décale-toi un peu vers la droite.';
+  else if (miss === 'obst-droite') txt = 'Tu as touché la boule de droite : décale-toi un peu vers la gauche.';
   else if (miss === 'obstacle') txt = pick(['Plus haut, passe l\'obstacle.', 'Tu tombes devant, prends plus de hauteur.']);
   else if (miss === 'ligne') txt = pick(['Sur la ligne ! Un poil plus dedans.', 'Juste sur le trait, ne stresse pas.']);
   else txt = pick(['Ne stresse pas, vas-y, tu peux le faire !', 'Respire, la prochaine est pour toi.']);
@@ -2230,6 +2287,22 @@ function drawCoachSay() {
   ctx.restore();
 }
 
+function drawFun() {
+  if (!atel || !atel.fun || cfg.mode !== 'atelier') return;
+  const age = performance.now() / 1000 - atel.fun.t - 1.2;   // après l'annonce des points
+  if (age < 0) return;
+  if (age > 3.4) { atel.fun = null; return; }
+  const a = Math.min(1, age * 4, (3.4 - age) * 2), f = fieldCenter();
+  const fs = Math.min(34, cw / 11), y = f.Y + fs * 1.4;
+  ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const sc = 1 + Math.max(0, 0.25 - age) * 0.8; ctx.translate(f.X, y); ctx.scale(sc, sc);
+  ctx.font = '900 ' + fs + 'px Nunito, system-ui';
+  ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(25,29,26,.9)'; ctx.strokeText(atel.fun.txt, 0, 0);
+  ctx.fillStyle = atel.fun.col; ctx.fillText(atel.fun.txt, 0, 0);
+  ctx.font = '800 14px Nunito, system-ui'; ctx.lineWidth = 4;
+  ctx.strokeText(atel.fun.sub, 0, fs * 0.85); ctx.fillStyle = '#f2ebdd'; ctx.fillText(atel.fun.sub, 0, fs * 0.85);
+  ctx.restore();
+}
 function drawPop() {
   const fcn = fieldCenter(), t = pop.t;
   const a = t < 1.3 ? 1 : Math.max(0, 1 - (t - 1.3) / 0.5);
@@ -2397,7 +2470,14 @@ function scoreShot() {
   const sh = s && s.ball, sp = atel.seq[atel.idx], fig = ATELIERS[sp.a].fig, C = atel.center, tg = atel.target;
   const outC = o => o.dead || dist(o, C) - o.r >= RR;
   const imp = sh && sh.shot && sh.shot.impact, hit = sh && sh.shot && sh.shot.hit;
-  atel.mark = imp ? {x: imp.x, y: imp.y, ok: true} : null; atel.miss = null;
+  atel.mark = imp ? {x: imp.x, y: imp.y, ok: true} : null; atel.miss = null; atel.side = null;
+  // De quel côté la boule est passée, vu du tireur (x plus petit = sa gauche) : au passage à hauteur de la cible,
+  // ou à défaut dans le prolongement de sa trajectoire
+  if (sh && tg) {
+    let px = sh.passX;
+    if (px === undefined && imp && imp.y - CIRCLE.y > 0.5) px = CIRCLE.x + (imp.x - CIRCLE.x) * (tg.y - CIRCLE.y) / (imp.y - CIRCLE.y);
+    if (px !== undefined) { const off = px - tg.x; atel.side = Math.abs(off) < tg.r * 0.35 ? 'centre' : off < 0 ? 'gauche' : 'droite'; atel.off = off; }
+  }
   if (!imp) { atel.miss = 'court'; return [0, 'Tir nul : pas d\'impact dans le cercle']; }
   const di = dist(imp, C);
   if (di + MARK >= RR) {
@@ -2408,8 +2488,8 @@ function scoreShot() {
     return [0, atel.miss === 'ligne' ? 'Tir nul : impact sur la ligne' : 'Tir nul : impact ' + (atel.miss === 'court' ? 'devant' : atel.miss === 'long' ? 'derrière' : 'à ' + atel.miss) + ' le cercle (' + gap + ' cm)'];
   }
   if ((fig === 2 || fig === 4) && imp.y - MARK <= atel.line) { atel.mark.ok = false; atel.miss = 'obstacle'; return [0, 'Impact avant l\'obstacle : 0']; }
-  if (!hit) { atel.miss = Math.abs(imp.x - C.x) > 0.05 ? (imp.x < C.x ? 'gauche' : 'droite') : 'long'; return [0, 'Manqué : 0']; }
-  if (hit.other !== tg) atel.miss = fig === 3 ? (imp.x < C.x ? 'gauche' : 'droite') : 'obstacle';
+  if (!hit) { atel.miss = atel.side === 'gauche' || atel.side === 'droite' ? atel.side : imp.y > tg.y ? 'long' : 'court'; return [0, 'Manqué : 0']; }
+  if (hit.other !== tg) atel.miss = fig === 3 ? (hit.other.x < tg.x ? 'obst-gauche' : 'obst-droite') : 'obstacle';
   if (hit.other !== tg) return [0, 'Obstacle touché en premier : 0'];
   if (fig === 5) return outC(tg) ? [5, 'But sorti ! +5'] : [3, 'But touché ! +3'];
   const obstTouched = atel.contacts.some(([a, b]) => atel.obst.includes(a) || atel.obst.includes(b));
@@ -2432,6 +2512,14 @@ function atelierSettled() {
   }
   showPop(txt, pts === 5 ? '#f2ebdd' : pts >= 3 ? '#b9d39a' : pts === 1 ? '#f2ebdd' : '#e8907f');
   coachAfter(pts, atel.miss);
+  // trois tirs réussis d'affilée (3 ou 5 points) : le public chante, le tireur « s'amuse »
+  atel.streak = atel.streak || {};
+  atel.streak[w] = pts >= 3 ? (atel.streak[w] || 0) + 1 : 0;
+  if (atel.streak[w] >= 3) {
+    const who = tName(w), k = atel.streak[w];
+    crowdChant(); cheerTeam = w; cheerT = performance.now() / 1000 + 1;
+    atel.fun = {txt: who + ' s\'amuse !', sub: k + ' tirs réussis d\'affilée', col: tCol(w), t: performance.now() / 1000};
+  }
   phase = 'atelWait'; updateHUD();
   if (pts >= 3) startReplay(txt, () => later(nextShot, 900)); else later(nextShot, 3000);
 }
@@ -2553,7 +2641,9 @@ function multiEnd(at) {
   $('menuBtn').classList.remove('hidden'); $('menuBtn').textContent = 'Changer les joueurs';
   $('menuBtn').onclick = () => { $('menuBtn').textContent = 'Menu principal'; document.body.classList.remove('multi'); show('scrMulti'); };
   $('endBox').classList.remove('hidden');
-  confetti(200);
+  if (rank.length > 1) giveTrophy(nm(rank[0]), col(rank[0]), 'Tir de précision - ' + (rank.length === 2 ? 'face-à-face' : rank.length + ' joueurs'),
+    at.sc[rank[0]].s + ' points' + (at.barrage ? ', vainqueur au barrage' : '') + '. Bravo !');
+  else confetti(200);
 }
 
 // ----- Compétition : qualification en solo, puis phase finale en face-à-face -----
@@ -2634,6 +2724,8 @@ function showComp() {
       $('cpTitle').innerHTML = '<svg class="ic"><use href="#i-trophy"/></svg> Vainqueur : ' + nm(F.w);
       $('cpSub').textContent = F.w === me ? 'Bravo, ' + N + ' remporte le tir de précision !' : 'Finaliste : ' + nm(F.w === F.a ? F.b : F.a);
       play.classList.add('hidden');
+      if (!comp.trophy) { comp.trophy = true; giveTrophy(nm(F.w), TEAMS[F.w].c, 'Vainqueur de la compétition de tir de précision',
+        'Finale : ' + nm(F.a) + ' ' + F.sa + ' - ' + F.sb + ' ' + nm(F.b) + (F.w === me ? '. Bravo !' : '')); }
     } else {
       $('cpTitle').textContent = ROUNDS[comp.cur];
       const m = myMatch();
@@ -2749,6 +2841,7 @@ function showChamp() {
   if (champ.done) {
     $('chTitle').innerHTML = '<svg class="ic"><use href="#i-trophy"/></svg> Champion : ' + TEAMS[rk[0].i].n;
     $('chSub').textContent = rk[0].i === me ? 'Bravo, votre équipe remporte le championnat !' : TEAMS[me].n + ' termine ' + myPos + (myPos === 1 ? 'er' : 'e') + ' sur ' + rk.length + '.';
+    if (!champ.trophy) { champ.trophy = true; saveChamp(); giveTrophy(TEAMS[rk[0].i].n, TEAMS[rk[0].i].c, 'Champion', rk[0].i === me ? 'Votre équipe remporte le championnat !' : TEAMS[me].n + ' termine ' + myPos + (myPos === 1 ? 'er' : 'e') + '.'); }
     $('chNext').textContent = ''; $('chPlay').classList.add('hidden');
   } else {
     $('chTitle').textContent = 'Championnat - Journée ' + (champ.round + 1) + ' / ' + n;
@@ -2807,7 +2900,7 @@ $('chReset').onclick = () => { cfg.team[0] = champ.team; newChamp(); showChamp()
 // =====================================================================
 // ---------- Interface : écrans, menus, pause, options ----------
 // =====================================================================
-const SCREENS = ['title', 'scrMatch', 'scrChamp', 'scrTir', 'scrMulti', 'picker', 'scrOptions', 'scrHow', 'pause', 'toss', 'comp', 'champ', 'endBox'];
+const SCREENS = ['trophyBox', 'title', 'scrMatch', 'scrChamp', 'scrTir', 'scrMulti', 'picker', 'scrOptions', 'scrHow', 'pause', 'toss', 'comp', 'champ', 'endBox'];
 const PARENT = {scrMatch: 'title', scrChamp: 'title', scrTir: 'title', scrOptions: 'title', scrHow: 'title', scrMulti: 'scrTir'};
 let gen = 0;   // change à chaque navigation : les minuteries d'une ancienne partie sont ignorées
 function later(fn, ms) { const g = gen; return setTimeout(() => { if (g === gen) fn(); }, ms); }
@@ -3028,6 +3121,17 @@ const fx = $('fx'), fctx = fx.getContext('2d');
 let conf = [], fxDirty = false;
 function fxResize() { fx.width = Math.ceil(cw * dpr); fx.height = Math.ceil(ch * dpr); }
 const CONF_COL = ['#c8603c', '#6f8a4a', '#f2ebdd', '#4f7ea8', '#c9963e', '#b5443a'];
+// Remise du trophée au vainqueur (duel, partie à plusieurs, compétition, championnat, match)
+function giveTrophy(name, col, sub, txt, cont) {
+  $('trSub').textContent = sub;
+  $('trName').textContent = name; $('trName').style.color = col || '#f2ebdd';
+  $('trTxt').textContent = txt || '';
+  const box = $('trophyBox');
+  box.classList.remove('hidden');
+  const svg = box.querySelector('.trophy'); svg.style.animation = 'none'; void svg.getBoundingClientRect(); svg.style.animation = '';
+  confetti(220); crowdCheer(1); if (navigator.vibrate) try { navigator.vibrate([60, 60, 120]); } catch (e) {}
+  $('trGo').onclick = () => { box.classList.add('hidden'); if (cont) cont(); };
+}
 function confetti(n) {
   for (let i = 0; i < n; i++) {
     conf.push({x: cw * (.2 + Math.random() * .6), y: ch * .3, vx: (Math.random() - .5) * 700, vy: -250 - Math.random() * 550,
@@ -3061,6 +3165,9 @@ function loop(t) {
     const n = Math.max(1, Math.ceil(dt * 300)), h = dt / n;
     for (let i = 0; i < n; i++) step(h);
     if (rec) { recNow += dt; recFrame(); }
+    if (cfg.mode === 'atelier' && atel && atel.target && lastShot && lastShot.ball) {   // repère le passage à hauteur de la cible
+      const b = lastShot.ball; if (b.passX === undefined && b.y >= atel.target.y) b.passX = b.x;
+    }
     if (stopped()) { if (rec) { for (let k = 0; k < 20; k++) { recNow += 0.03; recFrame(); } } onSettled(); }
   }
   if (phase === 'ceremony' && cer) { cer.t += dt; if (cer.t > cer.dur) endCeremony(); }
