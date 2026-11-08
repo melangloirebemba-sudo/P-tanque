@@ -30,6 +30,15 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Garder Gradle en cache (évite de le retélécharger à chaque fois)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: gradle-${{ runner.os }}-v1
+          restore-keys: gradle-${{ runner.os }}-
+
       - name: Installer les dépendances
         run: npm install
 
@@ -62,7 +71,15 @@ jobs:
         run: |
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug --no-daemon
+          # serveurs de téléchargement parfois lents : délai plus long et jusqu'à 3 essais
+          sed -i 's/^networkTimeout=.*/networkTimeout=120000/' gradle/wrapper/gradle-wrapper.properties || true
+          grep -q '^networkTimeout' gradle/wrapper/gradle-wrapper.properties || echo 'networkTimeout=120000' >> gradle/wrapper/gradle-wrapper.properties
+          ok=0
+          for i in 1 2 3; do
+            if ./gradlew assembleDebug --no-daemon; then ok=1; break; fi
+            echo "Essai $i échoué, nouvel essai dans 20 s"; sleep 20
+          done
+          [ "$ok" = 1 ]
           cp app/build/outputs/apk/debug/app-debug.apk ../CochonnetDOr.apk
 
       - name: Mettre l'APK en téléchargement (onglet Actions)
