@@ -28,6 +28,8 @@
   .hidden{display:none!important}
   #replayBar{position:fixed;z-index:12;left:50%;transform:translateX(-50%);bottom:max(18px,calc(env(safe-area-inset-bottom) + 10px));display:flex;align-items:center;gap:8px;
     background:rgba(25,29,26,.92);box-shadow:inset 0 0 0 1px var(--line);padding:8px 10px 8px 14px;border-radius:14px;max-width:96vw}
+  #pickBar{position:fixed;z-index:12;left:50%;transform:translateX(-50%);bottom:max(18px,calc(env(safe-area-inset-bottom) + 10px));display:flex;align-items:center;gap:8px;background:rgba(25,29,26,.92);box-shadow:inset 0 0 0 1px var(--line);padding:8px 10px 8px 14px;border-radius:14px}
+  #pkLbl{font-weight:900;font-size:13px;letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
   #rpLbl{font-weight:900;font-size:13px;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:4px}
   #rpLbl::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--clay);margin-right:7px;vertical-align:1px;animation:recBlink 1s infinite}
   @keyframes recBlink{50%{opacity:.2}}
@@ -416,6 +418,10 @@
   <button id="rpAgain" class="btn ghost small hidden">Revoir</button>
   <button id="rpGo" class="btn small hidden">Continuer</button>
 </div>
+<div id="pickBar" class="hidden">
+  <span id="pkLbl">Ramassage des boules</span>
+  <button id="pkSkip" class="btn ghost small">Passer</button>
+</div>
 <div id="controls" class="hidden">
   <div class="chips">
     <button id="cWho" class="chip who"></button>
@@ -459,6 +465,7 @@
     <div class="field"><label>Adversaire</label><div class="seg" id="segMode"></div></div>
     <div class="field" id="rowDiff"><label>Niveau de l'ordinateur</label><div class="seg" id="segDiff"></div></div>
     <div class="field"><label>Formule</label><div class="seg" id="segFmt"></div></div>
+    <div class="field"><label>Type de terrain</label><div class="seg" id="segFree"></div></div>
     <div class="field"><label>Équipes et noms des joueurs (facultatif)</label>
       <button class="teamCard" id="pick0"></button>
       <div class="names" id="names0"></div>
@@ -586,6 +593,7 @@
     </ul>
     <h3>La partie</h3>
     <p>En <b>tête-à-tête</b>, chaque équipe a 1 joueur et 3 boules ; en <b>doublette</b>, 2 joueurs et 3 boules chacun (6 par équipe). Vous pouvez saisir le nom des joueurs : ils remplacent le nom du club pendant la partie. Le gagnant du tirage au sort choisit le terrain et lance le cochonnet, qui doit tomber entre 6 et 10 m. Sinon l'adversaire le place. L'équipe qui n'a pas le point joue. À la fin de la mène, chaque boule plus proche que la meilleure adverse vaut un point. Partie en 9, 11 ou 13.</p>
+    <p>Comme dans une vraie partie, à chaque mène le <b>cercle est tracé là où était le cochonnet</b> à la fin de la mène précédente : on peut donc changer de bout de terrain. En fin de mène, les joueurs ramassent leurs boules (touchez « Passer » pour aller plus vite). Le terrain peut être <b>cadré</b> (planches en bois) ou <b>libre</b> (lignes de perte tracées au sol) ; le championnat se joue toujours sur terrain cadré.</p>
     <p>En <b>triplette</b>, 3 joueurs et 2 boules chacun (6 par équipe) : le pointeur, le milieu et le tireur. Le milieu peut pointer ou tirer sans perdre en précision ; « Au cercle » fait venir le joueur suivant.</p>
     <p>En doublette, c'est le <b>pointeur</b> qui va au cercle par défaut, sauf si l'adversaire a bien pointé : le <b>tireur</b> se présente alors. Touchez « Au cercle » pour échanger les joueurs. Les beaux carreaux et palets sont rejoués au <b>ralenti</b> (Passer, Revoir). Un joueur qui sort de son rôle est un peu moins précis.</p>
     <p><b>Carreau</b> : la boule tirée prend la place de la boule chassée. <b>Palet</b> : elle reste tout près et prend le point. <b>Reculée</b> : avec l'effet rétro, elle revient en arrière après le choc. Le carreau demande un tir <b>au fer</b> bien droit, et même alors il n'est pas garanti.</p>
@@ -705,7 +713,7 @@ const TERRAINS = [
   // béton : dur et lisse, les boules rebondissent en retombant et roulent loin
   {n: 'Béton', d: 'dur, ça rebondit', dec: 1.3, base: ['#a3a39d', '#b3b3ad'], border: '#5f5f5a', bump: 0.03, bounce: 0.38, concrete: true}
 ];
-const cfg = {mode: 'ai', team: [0, 1], terrain: 0, win: 13, diff: 1, format: 'tat', spectate: false, watch: null,
+const cfg = {mode: 'ai', team: [0, 1], terrain: 0, win: 13, diff: 1, format: 'tat', free: false, spectate: false, watch: null,
   names: (() => { try { const n = JSON.parse(localStorage.getItem('petanque_names')); if (n && n.length === 2) return n.map(a => [a[0] || '', a[1] || '', a[2] || '']); } catch (e) {} return [['', '', ''], ['', '', '']]; })()};
 const saveNames = () => { try { localStorage.setItem('petanque_names', JSON.stringify(cfg.names)); } catch (e) {} };
 const perTeam = () => cfg.format === 'triplette' ? 3 : cfg.format === 'doublette' ? 2 : 1;   // joueurs par équipe
@@ -749,6 +757,16 @@ function endReplay() {
 // ---------- Monde (mètres) ----------
 const W = 4, L = 13;
 const CIRCLE = {x: 2, y: 1}, CR = 0.25;
+// Le cercle de chaque mène est tracé là où était le cochonnet à la fin de la mène précédente.
+// Pour le jeu, on lance toujours « vers le haut » (y croissant) : quand le cercle passe à l'autre bout,
+// on retourne le repère de la mène (frameFlip). En paysage, l'image est retournée (flipV) pour qu'on voie
+// le cercle changer de bout ; en portrait, la caméra se place simplement derrière le nouveau cercle.
+let frameFlip = false, flipV = false, mc = {x: 2, y: 1}, lastJackPos = null;
+const FREE_M = 0.9;   // terrain libre : la zone de jeu va jusqu'aux lignes de perte, 90 cm plus loin
+const isFree = () => !!cfg.free && cfg.mode !== 'champ' && cfg.mode !== 'atelier';
+const BND = () => isFree() ? {x0: -FREE_M, x1: W + FREE_M, y0: -FREE_M, y1: L + FREE_M} : {x0: 0, x1: W, y0: 0, y1: L};
+function rawView(fn) { const f = flipV; flipV = false; try { return fn(); } finally { flipV = f; } }
+const slopeV = () => { const sl = T().slope; return sl && frameFlip ? [-sl[0], -sl[1]] : sl; };
 const BR = 0.13, JR = 0.06;
 const REF_B = 2.2, REF_J = 2.8;     // force « ressentie » (référence gravier)
 const MAXD = 11.5;
@@ -927,8 +945,8 @@ const v3 = {
 function setupCam(eye, tgt, box, widthPts) {
   const F = v3.norm(v3.sub(tgt, eye)), R = v3.norm(v3.cross(F, [0, 0, 1])), U = v3.cross(R, F);
   CAM = {E: eye, F, R, U, f: 1, cx: 0, cy: 0};
-  const corners = [[-0.2, -0.2, 0], [W + 0.2, -0.2, 0], [-0.2, L + 0.2, 0], [W + 0.2, L + 0.2, 0]];
-  const hPts = corners.concat([[CIRCLE.x, CIRCLE.y, 1.5]]), wPts = widthPts || corners;
+  const b = BND(), corners = [[b.x0 - 0.2, b.y0 - 0.2, 0], [b.x1 + 0.2, b.y0 - 0.2, 0], [b.x0 - 0.2, b.y1 + 0.2, 0], [b.x1 + 0.2, b.y1 + 0.2, 0]];
+  const hPts = corners.concat([[W / 2, 1, 1.5]]), wPts = widthPts || corners;
   let umin = 1e9, umax = -1e9, wmin = 1e9, wmax = -1e9;
   const pr = p => { const v = v3.sub(p, eye), zc = v3.dot(v, F); return [v3.dot(v, R) / zc, v3.dot(v, U) / zc]; };
   for (const p of wPts) { const [u] = pr(p); umin = Math.min(umin, u); umax = Math.max(umax, u); }
@@ -941,6 +959,7 @@ function setupCam(eye, tgt, box, widthPts) {
 }
 // monde (x, y, hauteur z) -> écran, avec l'échelle locale s (pixels par mètre)
 function P3(x, y, z) {
+  if (flipV) { x = W - x; y = L - y; }
   const C = CAM, v = [x - C.E[0], y - C.E[1], z - C.E[2]];
   const zc = Math.max(0.05, v3.dot(v, C.F));
   return {X: C.cx + C.f * v3.dot(v, C.R) / zc, Y: C.cy - C.f * v3.dot(v, C.U) / zc, s: C.f / zc};
@@ -951,8 +970,8 @@ function toWorld(X, Y) {
   const C = CAM, a = (X - C.cx) / C.f, b = -(Y - C.cy) / C.f;
   const d = [C.F[0] + C.R[0] * a + C.U[0] * b, C.F[1] + C.R[1] * a + C.U[1] * b, C.F[2] + C.R[2] * a + C.U[2] * b];
   if (d[2] > -1e-4) return {x: CIRCLE.x, y: L};
-  const t = -C.E[2] / d[2];
-  return {x: C.E[0] + t * d[0], y: C.E[1] + t * d[1]};
+  const t = -C.E[2] / d[2], x = C.E[0] + t * d[0], y = C.E[1] + t * d[1];
+  return flipV ? {x: W - x, y: L - y} : {x, y};
 }
 // cercle posé au sol (devient une ellipse en perspective)
 function groundPath(x, y, r, n = 40) {
@@ -981,14 +1000,13 @@ function resize() {
   const sp = $('safeProbe'), sTop = sp ? parseFloat(getComputedStyle(sp).paddingTop) || 0 : 0, sBot = sp ? parseFloat(getComputedStyle(sp).paddingBottom) || 0 : 0;
   if (!LAND) {
     const top = 84 + sTop + 50 + (document.body.classList.contains('multi') ? 44 : 0), bot = 124 + sBot + (perTeam() > 1 && cfg.mode !== 'atelier' && !cfg.spectate ? 34 : 0);
-    setupCam([CIRCLE.x, -2.9, 7.6], [CIRCLE.x, 7.2, 0], {l: 2, r: cw - 2, t: top, b: ch - bot}, [[-0.2, 2.4, 0], [W + 0.2, 2.4, 0], [-0.2, L + 0.2, 0], [W + 0.2, L + 0.2, 0]]);
+    const b = BND();
+    rawView(() => setupCam([W / 2, -2.9, 7.6], [W / 2, 7.2, 0], {l: 2, r: cw - 2, t: top, b: ch - bot}, [[b.x0 - 0.2, 2.4, 0], [b.x1 + 0.2, 2.4, 0], [b.x0 - 0.2, b.y1 + 0.2, 0], [b.x1 + 0.2, b.y1 + 0.2, 0]]));
   } else {
     const big = ch > 620, top = big ? 170 : 92, bot = big ? 130 : 104;   // place au-dessus pour le public
-    setupCam([W + 1.9, L / 2, 10.8], [W * 0.48, L / 2, 0], {l: 24, r: cw - 24, t: top, b: ch - bot});
+    rawView(() => setupCam([W + 1.9, L / 2, 10.8], [W * 0.48, L / 2, 0], {l: 24, r: cw - 24, t: top, b: ch - bot}));
   }
-  S = P(W / 2, L / 2).s;
-  buildCrowd();
-  makeGravel();
+  rawView(() => { S = P(W / 2, L / 2).s; buildCrowd(); makeGravel(); });
   if (typeof fxResize === 'function' && window.fx) fxResize();
 }
 
@@ -1053,7 +1071,8 @@ function makeGravel() {
   gravel = document.createElement('canvas'); gravel.width = Wd; gravel.height = Hd;
   const g = gravel.getContext('2d');
   // texture du terrain vue du dessus
-  const TPX = 90, tw = W * TPX, th = L * TPX, tc = terrainTexture(t, tw, th, TPX), tg = tc.getContext('2d');
+  const bd = BND(), TW = bd.x1 - bd.x0, TH = bd.y1 - bd.y0, rot = frameFlip && !LAND && cfg.mode !== 'atelier';   // en portrait, le décor tourne avec la caméra
+  const TPX = 90, tw = Math.round(TW * TPX), th = Math.round(TH * TPX), tc = terrainTexture(t, tw, th, TPX), tg = tc.getContext('2d');
   const T_ = tg.getImageData(0, 0, tw, th).data;
   const img = g.createImageData(Wd, Hd), D = img.data, C = CAM;
   const hash = (a, b) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
@@ -1070,9 +1089,10 @@ function makeGravel() {
       } else {
         const tt = -C.E[2] / dz, x = C.E[0] + tt * dx, y = C.E[1] + tt * dy;
         const shade = 0.86 + 0.14 * Math.sin(x * .45 + 1.7) * Math.sin(y * .31 + .6);   // ombres des platanes
-        if (x >= 0 && x <= W && y >= 0 && y <= L) {
-          const ti = (Math.min(th - 1, Math.floor((L - y) * TPX)) * tw + Math.min(tw - 1, Math.floor(x * TPX))) * 4;
-          const edge = Math.min(x, W - x, y, L - y), ao = 0.72 + 0.28 * Math.min(1, edge / 0.14);
+        if (x >= bd.x0 && x <= bd.x1 && y >= bd.y0 && y <= bd.y1) {
+          const sx = rot ? bd.x1 - x : x - bd.x0, sy = rot ? y - bd.y0 : bd.y1 - y;
+          const ti = (Math.max(0, Math.min(th - 1, Math.floor(sy * TPX))) * tw + Math.max(0, Math.min(tw - 1, Math.floor(sx * TPX)))) * 4;
+          const edge = Math.min(x - bd.x0, bd.x1 - x, y - bd.y0, bd.y1 - y), ao = isFree() ? 0.85 + 0.15 * Math.min(1, edge / 0.5) : 0.72 + 0.28 * Math.min(1, edge / 0.14);
           const sun = 1.04 - 0.08 * (y / L);
           r = T_[ti] * shade * ao * sun; gg = T_[ti + 1] * shade * ao * sun; b = T_[ti + 2] * shade * ao * sun;
         } else if (tt > 38) {                  // haie d'arbres au loin
@@ -1080,7 +1100,7 @@ function makeGravel() {
           r = 30 + 18 * n; gg = 58 + 25 * n; b = 32 + 12 * n;
         } else {                               // herbe
           const n1 = hash(Math.floor(x * 38), Math.floor(y * 38)), n2 = hash(Math.floor(x * 6), Math.floor(y * 6));
-          const near = Math.min(x + .2, W + .2 - x, y + .2, L + .2 - y);
+          const near = isFree() ? -1 : Math.min(x + .2, W + .2 - x, y + .2, L + .2 - y);
           const ao = near > -0.6 ? 0.62 + 0.38 * Math.min(1, -near / 0.6) : 1;
           const m = (0.78 + 0.3 * n1) * (0.9 + 0.15 * n2) * shade * ao;
           r = 52 * m; gg = 104 * m; b = 44 * m;
@@ -1097,6 +1117,11 @@ function makeGravel() {
   // planches en bois, en relief (boîtes 3D dessinées de la plus lointaine à la plus proche)
   g.save(); g.scale(k, k);
   const BW = 0.16, BH = 0.12;
+  if (isFree()) {   // terrain libre : pas de planches, seulement les lignes de perte tracées au sol
+    g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.setLineDash([10, 7]);
+    g.beginPath(); [[bd.x0, bd.y0], [bd.x1, bd.y0], [bd.x1, bd.y1], [bd.x0, bd.y1]].forEach((p, i) => { const q = P3(p[0], p[1], 0); i ? g.lineTo(q.X, q.Y) : g.moveTo(q.X, q.Y); });
+    g.closePath(); g.stroke(); g.setLineDash([]); g.restore(); return;
+  }
   const boxes = [[-BW, 0, -BW, L + BW], [W, W + BW, -BW, L + BW], [0, W, -BW, 0], [0, W, L, L + BW]];
   const E = CAM.E, dcam = bx => Math.hypot((bx[0] + bx[1]) / 2 - E[0], (bx[2] + bx[3]) / 2 - E[1]);
   boxes.sort((a, b) => dcam(b) - dcam(a));
@@ -1130,7 +1155,8 @@ function makeGravel() {
 function buildCrowd() {
   let seed = 3; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const list = [];
-  const add = (x, y, i) => list.push({x, y, i, h: 1.55 + rnd() * .3, ph: rnd() * 6, skin: ['#6b3e22', '#7a4a2a', '#8d5a34', '#5a321b'][i % 4], hair: rnd() < .4 ? 'cap' : 'hair'});
+  const m = isFree() ? FREE_M : 0;
+  const add = (x, y, i) => list.push({x: x < 0 ? x - m : x > W ? x + m : x, y: y > L ? y + m : y, i, h: 1.55 + rnd() * .3, ph: rnd() * 6, skin: ['#6b3e22', '#7a4a2a', '#8d5a34', '#5a321b'][i % 4], hair: rnd() < .4 ? 'cap' : 'hair'});
   if (!LAND) {
     // tout le public à gauche et au fond ; le côté droit est réservé à l'arbitre et aux adversaires
     for (let k = 0; k < 12; k++) add(-0.75 - (k % 2) * 0.7, 2.6 + k * 0.82, k);
@@ -1143,10 +1169,11 @@ function buildCrowd() {
 }
 const referee = () => {
   if (cfg.mode === 'atelier' && atel && atel.center) return LAND ? {x: W + 0.55, y: atel.center.y} : {x: W + 0.75, y: atel.center.y};   // à hauteur du cercle des cibles
-  return LAND ? {x: W - 0.7, y: L + 0.75} : {x: W + 0.7, y: 6.0};
+  const b = BND();
+  return LAND ? {x: W - 0.7, y: b.y1 + 0.75} : {x: b.x1 + 0.7, y: 6.0};
 };
 // place d'un adversaire qui attend : du côté de l'arbitre, où il n'y a pas de public
-const sideSpot = (i, jy) => LAND ? {x: 0.7 + i * 0.75, y: L + 0.55} : {x: W + 0.42, y: Math.min(L + 0.6, jy + 0.6 + i * 0.65)};
+const sideSpot = (i, jy) => { const b = BND(); return LAND ? {x: 0.7 + i * 0.75, y: b.y1 + 0.55} : {x: b.x1 + 0.42, y: Math.min(b.y1 + 0.6, jy + 0.6 + i * 0.65)}; };
 // chaque supporter appartient à une équipe (celle de son maillot) ; dans les menus, personne ne célèbre
 const crowdTeam = i => (phase === 'menu' || !scores) ? -9 : isMulti() ? i % atel.n : i % 2;
 function crowdColor(i) {
@@ -1273,7 +1300,12 @@ function person(x, y, opt) {
   ctx.restore();
 }
 function drawCrowd() {
-  const ref = referee();
+  const fl = flipV; flipV = false;
+  try { drawCrowd0(fl); } finally { flipV = fl; }
+}
+function drawCrowd0(fl) {
+  let ref = referee();
+  if (fl) ref = {x: W - ref.x, y: L - ref.y};
   const items = crowd.map(c => ({x: c.x, y: c.y, o: {h: c.h, ph: c.ph, skin: c.skin, hair: c.hair, shirt: crowdColor(c.i), team: crowdTeam(c.i)}}));
   const showBoard = cfg.mode === 'atelier' && atel && atel.lastPts !== undefined && performance.now() - atel.lastT < 2600;
   items.push({x: ref.x, y: ref.y, o: {h: 1.75, ph: 0, skin: '#5a321b', hair: 'cap', shirt: '#ffd400', ref: true, seated: true, board: showBoard ? String(atel.lastPts) : null}});
@@ -1291,7 +1323,7 @@ function drawCrowd() {
 // ---------- Outils ----------
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const live = () => { const o = balls.filter(b => !b.dead); if (jack && !jack.dead) o.push(jack); return o; };
-const out = o => o.x < 0 || o.x > W || o.y < 0 || o.y > L;
+const out = o => { const b = BND(); return o.x < b.x0 || o.x > b.x1 || o.y < b.y0 || o.y > b.y1; };
 function gauss() { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 const isAITurn = () => isMulti() ? !!atel.players[current].ai : isAIteam(current);
 const measure = b => dist(b, jack) - b.r - jack.r;
@@ -1366,7 +1398,7 @@ function updateHUD() {
 
 // ---------- Déroulement ----------
 function newGame() {
-  CIRCLE.y = 1;
+  CIRCLE.x = W / 2; CIRCLE.y = 1; mc = {x: W / 2, y: 1}; frameFlip = false; lastJackPos = null;
   audio(); gen++;
   hideScreens(); document.body.classList.remove('multi');
   $('hud').classList.add('hidden'); $('controls').classList.add('hidden');
@@ -1502,7 +1534,77 @@ function tossDone(w) {
   }
 }
 
+// Fin de mène : chaque joueur va ramasser les boules de son équipe, puis tout le monde rejoint le cochonnet,
+// là où sera tracé le prochain cercle. On peut passer cette étape.
+let pickup = null;
+function startPickup(cont) {
+  $('endBox').classList.add('hidden');
+  const n = perTeam(), W_ = [], goal = jack && !jack.dead ? {x: jack.x, y: jack.y} : {x: CIRCLE.x, y: CIRCLE.y};
+  for (const t of [0, 1]) for (let i = 0; i < n; i++)
+    W_.push({t, i, x: CIRCLE.x + (t ? 0.35 : -0.35) + (i - (n - 1) / 2) * 0.3, y: CIRCLE.y - 0.2 - i * 0.25, path: [], k: 0, ph: t * 3 + i, bend: 0});
+  for (const t of [0, 1]) {
+    const mine = W_.filter(w => w.t === t), todo = balls.filter(b => !b.dead && b.team === t);
+    // chacun prend la boule la plus proche de lui, à tour de rôle
+    const pos = mine.map(w => ({x: w.x, y: w.y}));
+    let j = 0;
+    while (todo.length) {
+      const w = mine[j % mine.length], p = pos[j % mine.length];
+      let bi = 0; todo.forEach((b, k) => { if (dist(b, p) < dist(todo[bi], p)) bi = k; });
+      const b = todo.splice(bi, 1)[0];
+      w.path.push({x: b.x, y: b.y, ball: b}); p.x = b.x; p.y = b.y; j++;
+    }
+  }
+  W_.forEach((w, k) => { const a = k / W_.length * Math.PI * 2; w.path.push({x: goal.x + Math.cos(a) * 0.55, y: goal.y - 0.35 + Math.sin(a) * 0.3}); });
+  const len = w => { let l = 0, x = w.x, y = w.y; for (const p of w.path) { l += Math.hypot(p.x - x, p.y - y); x = p.x; y = p.y; } return l; };
+  const longest = Math.max(...W_.map(len));
+  pickup = {w: W_, v: Math.max(1.8, longest / 5.5), cont, t: 0, done: 0};
+  phase = 'pickup'; setMsg('Les joueurs ramassent leurs boules'); updateHUD();
+  $('pickBar').classList.remove('hidden');
+}
+function updatePickup(dt) {
+  const P_ = pickup; if (!P_) return;
+  P_.t += dt;
+  let moving = 0;
+  for (const w of P_.w) {
+    if (w.bend > 0) { w.bend -= dt; moving++; continue; }   // il se baisse pour ramasser
+    const g = w.path[w.k]; if (!g) continue;
+    moving++;
+    const dx = g.x - w.x, dy = g.y - w.y, d = Math.hypot(dx, dy), st = P_.v * dt;
+    if (d <= st) {
+      w.x = g.x; w.y = g.y; w.k++;
+      if (g.ball) { g.ball.dead = true; w.bend = 0.35; clac(0.12); }
+    } else { w.x += dx / d * st; w.y += dy / d * st; }
+  }
+  if (!moving) { P_.done += dt; if (P_.done > 0.5) endPickup(); }
+}
+function endPickup() {
+  if (!pickup) return;
+  const cont = pickup.cont; pickup = null;
+  $('pickBar').classList.add('hidden');
+  cont();
+}
+$('pkSkip').onclick = endPickup;
+function drawPickup() {
+  if (phase !== 'pickup' || !pickup) return;
+  const now = performance.now() / 1000, E = CAM.E;
+  const list = pickup.w.slice().sort((a, b) => {   // les plus loin d'abord
+    const A = flipV ? [W - a.x, L - a.y] : [a.x, a.y], B_ = flipV ? [W - b.x, L - b.y] : [b.x, b.y];
+    return Math.hypot(B_[0] - E[0], B_[1] - E[1]) - Math.hypot(A[0] - E[0], A[1] - E[1]);
+  });
+  for (const w of list) person(w.x, w.y, {h: w.bend > 0 ? 1.35 : 1.74, ph: w.ph, skin: ['#7a4a2a', '#6b3e22', '#5d3a20'][w.i % 3], hair: 'cap', shirt: tCol(w.t), nojump: true, walk: w.path[w.k] ? now : undefined});
+}
+
 function newMene() {
+  // le nouveau cercle est tracé là où était le cochonnet (à au moins 1 m des bords, avec la place de lancer à 6 - 10 m)
+  if (lastJackPos) {
+    let {x, y} = lastJackPos, flipped = false;
+    if (y > L / 2) { frameFlip = !frameFlip; x = W - x; y = L - y; flipped = true; }
+    const b = BND();
+    mc = {x: Math.min(W - 1, Math.max(1, x)), y: Math.min(b.y1 - 8.2, Math.max(1, y))};
+    lastJackPos = null;
+    if (flipped && !LAND && T().slope) rawView(makeGravel);   // en portrait, la pente doit tourner avec la caméra
+  }
+  CIRCLE.x = mc.x; CIRCLE.y = mc.y;
   balls = []; jack = null; scoring = []; menNo++; parts = []; pop = null;
   pRem = [0, 1].map(() => Array(perTeam()).fill(BPP())); remaining = [BPP() * perTeam(), BPP() * perTeam()];
   lastP = [menNo % 2, menNo % 2]; setThrower(0); setThrower(1);
@@ -1591,7 +1693,7 @@ function onSettled() {
   if (throwingJack) {
     throwingJack = false;
     const dd = dist(jack, CIRCLE) - CR;
-    const ok = !jack.dead && dd >= 6 && dd <= 10 && jack.x >= 0.5 && jack.x <= W - 0.5;
+    const bd = BND(), ok = !jack.dead && dd >= 6 && dd <= 10 && jack.x >= bd.x0 + 0.5 && jack.x <= bd.x1 - 0.5 && jack.y <= bd.y1 - 0.5;
     const where = jack.dead ? 'Cochonnet sorti du terrain' : 'Cochonnet à ' + fmt(dd) + ' m';
     if (!ok) {
       // L'adversaire place le cochonnet ; le premier lanceur garde la première boule
@@ -1624,7 +1726,7 @@ function clampZone(x, y) {
     if (vy < 0.1) { vy = Math.abs(vy) + 0.1; d = Math.hypot(vx, vy); }
     const r = Math.min(10 + CR - 0.02, Math.max(6 + CR + 0.02, d));
     x = CIRCLE.x + vx / d * r; y = CIRCLE.y + vy / d * r;
-    x = Math.min(W - 0.5, Math.max(0.5, x));
+    const bd = BND(); x = Math.min(bd.x1 - 0.5, Math.max(bd.x0 + 0.5, x)); y = Math.min(bd.y1 - 0.5, y);
   }
   return {x, y};
 }
@@ -1693,6 +1795,7 @@ function endMene() {
     }
   }
   if (winner !== null) { scores[winner] += pts; starter = winner; }
+  if (!jack.dead) lastJackPos = {x: jack.x, y: jack.y};   // le prochain cercle sera tracé ici
   setMsg(''); updateHUD();
   const over = scores[0] >= cfg.win || scores[1] >= cfg.win;
   const showEnd = () => {
@@ -1702,7 +1805,7 @@ function endMene() {
     const inChamp = over && cfg.mode === 'champ', watched = inChamp && cfg.watch && cfg.watch.type === 'champ';
     $('endBtn').textContent = watched ? 'Retour au championnat' : inChamp ? 'Voir le classement' : over ? 'Rejouer' : 'Mène suivante';
     $('endBtn').onclick = watched ? () => { champ.watched = champ.watched || {}; champ.watched[cfg.watch.key] = [scores[0], scores[1]]; saveChamp(); userPlay(); showChamp(); }
-      : inChamp ? () => { finishRound([scores[0], scores[1]]); showChamp(); } : over ? newGame : newMene;
+      : inChamp ? () => { finishRound([scores[0], scores[1]]); showChamp(); } : over ? newGame : () => startPickup(newMene);
     $('menuBtn').classList.toggle('hidden', !over || inChamp);
     $('menuBtn').onclick = goTitle;
     $('endBox').classList.remove('hidden');
@@ -1740,7 +1843,8 @@ function aiPlay() {
   }
   lastPow = 0.7;
   if (phase === 'cochonnet') {
-    const d = 6.9 + Math.random() * 2.4, a = (Math.random() - .5) * 0.15;
+    const room = BND().y1 - 2.2 - CIRCLE.y - CR, d = Math.max(6.4, Math.min(room, 6.6 + Math.random() * 1.9));   // comme un joueur : 6,5 à 8,5 m, loin du fond
+    const a = Math.atan2(W / 2 - CIRCLE.x, d) * 0.7 + (Math.random() - .5) * 0.12;
     return doThrow(Math.sin(a), Math.cos(a), d, 'pointer', false);
   }
   if (phase !== 'aim') return;
@@ -1766,7 +1870,9 @@ function aiPlay() {
       const jackFront = jack.y < b.y && Math.abs(jack.x - b.x) < 0.25 && b.y - jack.y < 0.6;
       const ownNear = balls.filter(o => !o.dead && o.team === me && dist(o, b) < 0.45).length;   // risque de chasser ses propres boules
       if (jackFront) pS -= 0.08;
-      const ev = pS * gain - (1 - pS) * 0.15 - ownNear * 0.35;
+      // risque de sortir le cochonnet (boule collée au but, but près du fond ou d'un bord) : mène souvent nulle
+      const bd = BND(), jEdge = Math.min(jack.x - bd.x0, bd.x1 - jack.x, bd.y1 - jack.y), jackRisk = dist(b, jack) < 0.35 ? 0.35 + (jEdge < 1.5 ? 0.6 : 0) : 0;
+      const ev = pS * gain - (1 - pS) * 0.15 - ownNear * 0.35 - jackRisk * Math.max(1, gain);
       if (!best || ev > best.ev) best = {b, ev, jackFront};
     }
     // valeur d'un point : chance de passer devant la meilleure boule adverse
@@ -1785,7 +1891,7 @@ function aiPlay() {
     // la pente : on vise plus haut sur la pente pour que la boule redescende vers le cochonnet
     if (t.slope) {
       const pr = PORTEES[opt.portee], rollD = L_ * (1 - pr.f), v = Math.sqrt(2 * t.dec * rollD), tr = v / t.dec;
-      tx -= 0.5 * t.slope[0] * tr * tr * 0.85;
+      tx -= 0.5 * slopeV()[0] * tr * tr * 0.85;
     }
   }
   // doublette, triplette : on s'entend, le tireur tire et le pointeur pointe ; le milieu complète
@@ -1856,7 +1962,7 @@ function step(h) {
       if (sp > 0) {
         if (bump && sp > 0.05) { const k = gauss() * bump * h * 3; o.vx += -o.vy / sp * k; o.vy += o.vx / sp * k; }
         if (o.spin && sp > 0.05) { const k = o.spin * 0.45 * h * (T().spinMul || 1); const lx = -o.vy / sp, ly = o.vx / sp; o.vx += lx * k; o.vy += ly * k; }
-        if (T().slope) { o.vx += T().slope[0] * h; o.vy += T().slope[1] * h; }   // la pente entraîne la boule qui roule
+        if (T().slope) { const sl = slopeV(); o.vx += sl[0] * h; o.vy += sl[1] * h; }   // la pente entraîne la boule qui roule
         const sp2 = Math.hypot(o.vx, o.vy);
         let ns = sp2 - o.dec * h; if (ns < 0.01) ns = 0;
         o.vx *= ns / sp2; o.vy *= ns / sp2;
@@ -2024,7 +2130,9 @@ function heldBall(x, y, sc) {
 }
 
 const isCrouched = () => cfg.mode !== 'atelier' && (anim ? crouchAnim : phase === 'aim' && !isAITurn() && stance === 'accroupi' && !(charge && charge.type === 'tir'));
-const WAIT = () => ({x: CIRCLE.x - 1.15, y: 0.32});   // le partenaire attend derrière, à gauche
+// les partenaires attendent à l'extérieur du terrain, à hauteur du cercle (côté public, jamais sur le jeu)
+const mateX = () => { const b = BND(); return flipV ? b.x1 + 0.45 : b.x0 - 0.45; };
+const WAIT = () => ({x: mateX(), y: CIRCLE.y + 0.15});
 const lerp = (a, b, k) => a + (b - a) * k;
 function playerPos() {
   if (!swapAnim) return {x: CIRCLE.x, y: CIRCLE.y};
@@ -2033,7 +2141,7 @@ function playerPos() {
 }
 // joueurs autour : partenaire qui attend, adversaires au bord du terrain derrière le cochonnet
 function drawSideline() {
-  if (cfg.mode === 'atelier' || !scores || phase === 'ceremony') return;
+  if (cfg.mode === 'atelier' || !scores || phase === 'ceremony' || phase === 'pickup') return;
   const op = 1 - current, now = performance.now() / 1000;
   if (jack && !jack.dead && ['aim', 'moving', 'replay', 'placer', 'settled'].includes(phase)) {
     for (let i = 0; i < perTeam(); i++) {
@@ -2042,7 +2150,7 @@ function drawSideline() {
     }
   }
   if (perTeam() > 2 && phase !== 'menEnd') {   // triplette : le troisième attend un peu plus loin
-    const w2 = {x: CIRCLE.x - 1.75, y: 0.5};
+    const w2 = {x: mateX() + (flipV ? 0.35 : -0.35), y: CIRCLE.y - 0.55};
     person(w2.x, w2.y, {h: 1.74, ph: 2, skin: '#5d3a20', hair: 'cap', shirt: tCol(current), nojump: true});
   }
   if (perTeam() > 1) {
@@ -2054,7 +2162,7 @@ function drawSideline() {
   }
 }
 function drawPlayer() {
-  if (!scores || phase === 'ceremony') return;
+  if (!scores || phase === 'ceremony' || phase === 'pickup') return;
   const shirt = tCol(current), skin = '#7a4a2a';
   const pp = playerPos(), c = P(pp.x, pp.y);
   ctx.lineCap = 'round';
@@ -2088,7 +2196,7 @@ function drawPlayer() {
     // ---- Vue de profil (paysage), tourné vers la droite ----
     const u = Math.max(c.s * 0.15, 3.5), fx = c.X - CR * c.s * 0.2, fy = c.Y + 0.2 * u;
     const arm = armState(true);
-    ctx.save(); ctx.translate(fx, fy);
+    ctx.save(); ctx.translate(fx, fy); if (flipV) ctx.scale(-1, 1);
     if (isCrouched()) ctx.scale(1.1, 0.66);
     ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, 0, 2.2 * u, 0.6 * u, 0, 0, 7); ctx.fill();
     // jambes (légèrement fléchies)
@@ -2126,8 +2234,9 @@ function draw() {
   ctx.fillStyle = '#1d3d1f'; ctx.fillRect(0, 0, cw, ch);
   if (shake) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
   ctx.drawImage(gravel, 0, 0, cw, ch);
+  flipV = LAND && frameFlip && cfg.mode !== 'atelier' && phase !== 'menu';
   if (phase === 'menu') { drawDemo(); return; }
-  if (cfg.mode !== 'atelier') CIRCLE.y = 1;
+  if (cfg.mode !== 'atelier') { CIRCLE.x = mc.x; CIRCLE.y = mc.y; }
   else if (atel && atel.dists && atel.dists.length > 1) {   // pas de tir : un repère par distance, toujours visibles
     for (const d of atel.dists) {
       const y = throwY(d);
@@ -2144,8 +2253,15 @@ function draw() {
     }
   }
   const c = P(CIRCLE.x, CIRCLE.y);
-  ctx.fillStyle = 'rgba(255,255,255,.08)'; groundPath(CIRCLE.x, CIRCLE.y, CR); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.lineWidth = 2.5; ctx.stroke();
+  if (cfg.mode === 'atelier') {
+    ctx.fillStyle = 'rgba(255,255,255,.08)'; groundPath(CIRCLE.x, CIRCLE.y, CR); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.lineWidth = 2.5; ctx.stroke();
+  } else if (phase !== 'pickup') {   // cercle de lancer en plastique, posé au sol
+    const lw = Math.max(2.5, c.s * 0.035);
+    ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = lw; ctx.save(); ctx.translate(0, lw * 0.35); groundPath(CIRCLE.x, CIRCLE.y, CR); ctx.stroke(); ctx.restore();
+    ctx.strokeStyle = '#c8452f'; ctx.lineWidth = lw; groundPath(CIRCLE.x, CIRCLE.y, CR); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,220,200,.35)'; ctx.lineWidth = Math.max(1, lw * 0.3); groundPath(CIRCLE.x, CIRCLE.y, CR - 0.01); ctx.stroke();
+  }
   drawCrowd();
 
   if (cfg.mode === 'atelier' && atel && atel.center && phase !== 'ceremony') {      // cercle de tir (+ zone d'impact interdite)
@@ -2210,6 +2326,7 @@ function draw() {
   if (canAim()) drawAim();
   drawSideline();
   drawPlayer();
+  drawPickup();
   if (phase === 'ceremony') drawCeremony();
   objs.filter(o => !o.dead && o.air).forEach(drawObj);
 
@@ -2229,14 +2346,14 @@ function draw() {
 
 // Flèche de direction courte : aucune cible, aucune distance
 function drawZone() {
-  const pts = [], R1 = 6 + CR, R2 = 10 + CR;
-  for (let i = 0; i <= 20; i++) { const x = 0.5 + (W - 1) * i / 20; pts.push(P(x, CIRCLE.y + Math.sqrt(R2 * R2 - (x - CIRCLE.x) ** 2))); }
-  for (let i = 20; i >= 0; i--) { const x = 0.5 + (W - 1) * i / 20; pts.push(P(x, CIRCLE.y + Math.sqrt(R1 * R1 - (x - CIRCLE.x) ** 2))); }
+  const pts = [], R1 = 6 + CR, R2 = 10 + CR, bd = BND(), x0 = bd.x0 + 0.5, xw = bd.x1 - bd.x0 - 1, ym = bd.y1 - 0.5;
+  for (let i = 0; i <= 20; i++) { const x = x0 + xw * i / 20; pts.push(P(x, Math.min(ym, CIRCLE.y + Math.sqrt(R2 * R2 - (x - CIRCLE.x) ** 2)))); }
+  for (let i = 20; i >= 0; i--) { const x = x0 + xw * i / 20; pts.push(P(x, Math.min(ym, CIRCLE.y + Math.sqrt(R1 * R1 - (x - CIRCLE.x) ** 2)))); }
   const pulse = 0.18 + 0.08 * Math.sin(performance.now() / 250);
   ctx.fillStyle = 'rgba(120,230,120,' + pulse + ')'; ctx.strokeStyle = 'rgba(160,255,160,.9)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
   ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.X, p.Y) : ctx.moveTo(p.X, p.Y)); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.setLineDash([]);
-  const m = P(CIRCLE.x, CIRCLE.y + 8.25);
+  const m = P(CIRCLE.x, Math.min(ym - 0.6, CIRCLE.y + 8.25));
   ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('Zone 6 - 10 m', m.X, m.Y);
 }
@@ -2496,6 +2613,7 @@ const atelCenterY = () => 1 + CR + atelMaxD() + RR;                 // centre fi
 const throwY = d => atelCenterY() - RR - d - CR;                     // cercle de lancer pour d mètres
 function setupShot() {
   const sp = atel.seq[atel.idx];
+  CIRCLE.x = W / 2; frameFlip = false;
   // le cercle des boules à tirer ne bouge jamais ; c'est le tireur qui recule selon la distance
   CIRCLE.y = throwY(sp.d);
   const c = {x: CIRCLE.x, y: atelCenterY()};
@@ -3018,7 +3136,7 @@ function show(id) {
   $(id).classList.remove('hidden');
   if (RENDER[id]) RENDER[id]();
 }
-function goTitle() { document.body.classList.remove('multi'); setupDemo(); show('title'); }
+function goTitle() { document.body.classList.remove('multi'); frameFlip = false; setupDemo(); show('title'); }
 document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => { const sc = b.closest('.screen').id; show(PARENT[sc] || 'title'); });
 
 // Petits composants
@@ -3070,6 +3188,7 @@ const FORMATS = [['tat', 'Tête-à-tête', '1 joueur · 3 boules'], ['doublette'
 const RENDER = {
   scrMatch() {
     segUI('segFmt', FORMATS, () => cfg.format, v => { cfg.format = v; RENDER.scrMatch(); });
+    segUI('segFree', [[false, 'Cadré', 'avec planches'], [true, 'Libre', 'lignes de perte au sol']], () => !!cfg.free, v => cfg.free = v);
     for (const t of [0, 1]) {
       const box = $('names' + t); box.innerHTML = '';
       for (const i of perTeam() === 3 ? [0, 2, 1] : [0, 1].slice(0, perTeam())) {   // pointeur, (milieu), tireur
@@ -3302,6 +3421,7 @@ function frame(t) {
   }
   if (phase === 'ceremony' && cer) { cer.t += dt; if (cer.t > cer.dur) endCeremony(); }
   if (swapAnim) { swapAnim.t += dt; if (swapAnim.t > swapAnim.dur) { swapAnim = null; updateHUD(); } }
+  if (phase === 'pickup') updatePickup(dt);
   if (phase === 'replay' && rp) {
     rp.t += dt * 0.33;                                   // un tiers de la vitesse réelle
     const T0 = rp.t, F = rec;
