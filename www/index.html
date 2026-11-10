@@ -499,6 +499,9 @@
   </div>
   <div class="panel">
     <div class="field"><label>Votre équipe (compétition et entraînement)</label><button class="teamCard" id="pickT"></button></div>
+    <div class="field"><label>Votre nom de tireur</label><div class="names"><input id="tirName" maxlength="16" autocomplete="off" placeholder="Nom du tireur"></div></div>
+    <div class="field"><label>Catégorie de la compétition</label><div class="seg" id="segCat"></div></div>
+    <div class="field" id="rowMates"><label>Tireurs de votre équipe (vous jouez le premier, l'ordinateur joue les autres)</label><div class="seg" id="segMates"></div><div class="names" id="mateNames" style="flex-wrap:wrap"></div></div>
     <div class="field"><label>Adversaire (ordi contre ordi)</label><button class="teamCard" id="pickT2"></button></div>
   </div>
 </div>
@@ -583,12 +586,14 @@
     </ul>
     <h3>La partie</h3>
     <p>En <b>tête-à-tête</b>, chaque équipe a 1 joueur et 3 boules ; en <b>doublette</b>, 2 joueurs et 3 boules chacun (6 par équipe). Vous pouvez saisir le nom des joueurs : ils remplacent le nom du club pendant la partie. Le gagnant du tirage au sort choisit le terrain et lance le cochonnet, qui doit tomber entre 6 et 10 m. Sinon l'adversaire le place. L'équipe qui n'a pas le point joue. À la fin de la mène, chaque boule plus proche que la meilleure adverse vaut un point. Partie en 9, 11 ou 13.</p>
+    <p>En <b>triplette</b>, 3 joueurs et 2 boules chacun (6 par équipe) : le pointeur, le milieu et le tireur. Le milieu peut pointer ou tirer sans perdre en précision ; « Au cercle » fait venir le joueur suivant.</p>
     <p>En doublette, c'est le <b>pointeur</b> qui va au cercle par défaut, sauf si l'adversaire a bien pointé : le <b>tireur</b> se présente alors. Touchez « Au cercle » pour échanger les joueurs. Les beaux carreaux et palets sont rejoués au <b>ralenti</b> (Passer, Revoir). Un joueur qui sort de son rôle est un peu moins précis.</p>
     <p><b>Carreau</b> : la boule tirée prend la place de la boule chassée. <b>Palet</b> : elle reste tout près et prend le point. <b>Reculée</b> : avec l'effet rétro, elle revient en arrière après le choc. Le carreau demande un tir <b>au fer</b> bien droit, et même alors il n'est pas garanti.</p>
     <h3>Les terrains</h3>
     <div class="tpick" id="howTerrains"></div>
     <h3>Tir de précision</h3>
     <p>5 ateliers × 4 distances = 20 tirs, 100 points maximum. En face-à-face, le match s'arrête dès qu'un joueur ne peut plus être rejoint. L'impact doit être dans le cercle (et après l'obstacle pour les ateliers 2 et 4).</p>
+    <p>La <b>compétition</b> se joue en deux catégories : <b>Nationale</b> (chaque équipe présente 1 tireur) ou <b>Départemental</b> (jusqu'à 4 tireurs par équipe). Vous tirez pour un seul tireur, à votre nom ; l'ordinateur tire pour vos coéquipiers.</p>
     <ul>
       <li><b>5</b> : carreau, ou but sorti du cercle.</li>
       <li><b>3</b> : cible et boule de tir sortent, ou but touché qui reste.</li>
@@ -701,9 +706,11 @@ const TERRAINS = [
   {n: 'Béton', d: 'dur, ça rebondit', dec: 1.3, base: ['#a3a39d', '#b3b3ad'], border: '#5f5f5a', bump: 0.03, bounce: 0.38, concrete: true}
 ];
 const cfg = {mode: 'ai', team: [0, 1], terrain: 0, win: 13, diff: 1, format: 'tat', spectate: false, watch: null,
-  names: (() => { try { const n = JSON.parse(localStorage.getItem('petanque_names')); if (n && n.length === 2) return n; } catch (e) {} return [['', ''], ['', '']]; })()};
+  names: (() => { try { const n = JSON.parse(localStorage.getItem('petanque_names')); if (n && n.length === 2) return n.map(a => [a[0] || '', a[1] || '', a[2] || '']); } catch (e) {} return [['', '', ''], ['', '', '']]; })()};
 const saveNames = () => { try { localStorage.setItem('petanque_names', JSON.stringify(cfg.names)); } catch (e) {} };
-const perTeam = () => cfg.format === 'doublette' ? 2 : 1;     // joueurs par équipe (3 boules chacun)
+const perTeam = () => cfg.format === 'triplette' ? 3 : cfg.format === 'doublette' ? 2 : 1;   // joueurs par équipe
+const BPP = () => perTeam() === 3 ? 2 : 3;                     // boules par joueur : 2 en triplette, 3 sinon
+const FMT_NAME = {tat: 'tête-à-tête', doublette: 'doublette', triplette: 'triplette'};
 let pRem = [[3], [3]], curP = [0, 0], lastP = [0, 0];       // boules restantes par joueur, joueur au cercle
 const opts = Object.assign({sound: true, vib: true, gauge: 1.4}, (() => { try { return JSON.parse(localStorage.getItem('petanque_opts')) || {}; } catch (e) { return {}; } })());
 const saveOpts = () => { try { localStorage.setItem('petanque_opts', JSON.stringify(opts)); } catch (e) {} };
@@ -773,8 +780,9 @@ function playerName(t, i) {
 function tName(t) {
   if (isMulti()) { const p = atel.players[t]; return p.name + (p.ai ? ' (ordi)' : ''); }
   const ai = isAIteam(t) ? ' (ordi)' : '';
+  if (cfg.mode === 'atelier' && atel && atel.shooters && atel.shooters[t] && atel.shooters[t].n) return atel.shooters[t].n + ai;   // compétition : nom du tireur
   const given = useNames() ? cfg.names[t].slice(0, perTeam()).map(x => (x || '').trim()) : [];
-  if (given.some(Boolean)) return given.map((x, i) => x || playerName(t, i)).join(' & ') + ai;
+  if (given.some(Boolean)) { const all = (perTeam() === 3 ? [0, 2, 1] : given.map((_, i) => i)).map(i => given[i] || playerName(t, i)); return (all.length > 2 ? all.slice(0, -1).join(', ') + ' & ' + all[all.length - 1] : all.join(' & ')) + ai; }
   return TEAMS[cfg.team[t]].n + ai;
 }
 // celui ou celle qui est au cercle
@@ -784,15 +792,17 @@ function throwerName(t) {
 }
 // en doublette, les deux joueurs se partagent les 6 boules : celui qui en a le plus joue (en alternant)
 // doublette : par défaut c'est le pointeur qui va au cercle ; pour envoyer le tireur, l'équipe doit le choisir
-const ROLES = ['pointeur', 'tireur'];
+// index 0 = pointeur, 1 = tireur, 2 = milieu (il pointe et tire, sans perte de précision)
+const ROLES = ['pointeur', 'tireur', 'milieu'];
+// prochain joueur de l'équipe qui a encore des boules, dans l'ordre de préférence donné
+function firstWithBalls(t, prefs) { for (const i of prefs) if (i < pRem[t].length && pRem[t][i] > 0) return i; return pRem[t].findIndex(x => x > 0); }
 function setThrower(t) {
   const r = pRem[t];
   if (r.length === 1) { curP[t] = 0; return; }
   // la boule adverse est bien pointée (moins de 30 cm et elle tient le point) : on envoie le tireur
   const b = closest(), o = b[1 - t], m = b[t];
-  let want = o && o.d < 0.3 && (!m || o.d < m.d) ? 1 : 0;
-  if (r[want] === 0) want = 1 - want;
-  curP[t] = want;
+  const want = o && o.d < 0.3 && (!m || o.d < m.d) ? 1 : 0;
+  curP[t] = Math.max(0, firstWithBalls(t, want ? [1, 2, 0] : [0, 2, 1]));
 }
 const tCol = t => isMulti() ? TEAMS[atel.players[t].club].c : TEAMS[cfg.team[t]].c;
 const shooterTeam = () => isMulti() ? 'p' + current : current;
@@ -1316,7 +1326,7 @@ function updateHUD() {
   const showWho = !at && perTeam() > 1 && phase === 'aim' && !isAITurn();
   $('cWho').classList.toggle('hidden', !showWho);
   if (showWho) {
-    const o = 1 - curP[current], canSwap = pRem[current][o] > 0;
+    const o = nextMate(current), canSwap = o >= 0;
     const i = curP[current], custom = useNames() && (cfg.names[current][i] || '').trim();
     $('cWho').innerHTML = '<svg class="ic"><use href="#i-users"/></svg> Au cercle : ' + playerName(current, i).replace(/</g, '&lt;') + (custom ? ' (' + ROLES[i] + ')' : '') + ' · ' + pRem[current][i] + ' boule' + (pRem[current][i] > 1 ? 's' : '') + (canSwap ? ' · changer' : '');
     $('cWho').disabled = !canSwap;
@@ -1345,7 +1355,7 @@ function updateHUD() {
     $('n' + t).textContent = tName(t);
     $('b' + t).style.background = tCol(t); $('t' + t).style.setProperty('--tc', tCol(t));
     $('s' + t).textContent = scores[t];
-    $('d' + t).innerHTML = '<i class="bd on"></i>'.repeat(remaining[t]) + '<i class="bd"></i>'.repeat(3 * perTeam() - remaining[t]);
+    $('d' + t).innerHTML = '<i class="bd on"></i>'.repeat(remaining[t]) + '<i class="bd"></i>'.repeat(BPP() * perTeam() - remaining[t]);
     $('t' + t).classList.toggle('active', current === t && phase !== 'menEnd');
   }
   $('mene').innerHTML = '<b>Mène ' + menNo + '</b><br>' + T().n + ' · en ' + cfg.win;
@@ -1367,7 +1377,7 @@ function newGame() {
 
 function startMatch(winner, terrain) {
   cfg.terrain = terrain;
-  scores = [0, 0]; starter = winner; menNo = 0; balls = []; jack = null; remaining = [3 * perTeam(), 3 * perTeam()];
+  scores = [0, 0]; starter = winner; menNo = 0; balls = []; jack = null; remaining = [BPP() * perTeam(), BPP() * perTeam()];
   makeGravel();
   $('toss').classList.add('hidden');
   ceremony('start', () => { $('hud').classList.remove('hidden'); newMene(); });
@@ -1494,7 +1504,7 @@ function tossDone(w) {
 
 function newMene() {
   balls = []; jack = null; scoring = []; menNo++; parts = []; pop = null;
-  pRem = [0, 1].map(() => Array(perTeam()).fill(3)); remaining = [3 * perTeam(), 3 * perTeam()];
+  pRem = [0, 1].map(() => Array(perTeam()).fill(BPP())); remaining = [BPP() * perTeam(), BPP() * perTeam()];
   lastP = [menNo % 2, menNo % 2]; setThrower(0); setThrower(1);
   current = starter; phase = 'cochonnet'; anim = null; aimDir = {dx: 0, dy: 1}; charge = null;
   $('endBox').classList.add('hidden');
@@ -1697,7 +1707,7 @@ function endMene() {
     $('menuBtn').onclick = goTitle;
     $('endBox').classList.remove('hidden');
     if (over && !cfg.spectate && (cfg.mode === '2p' || w === 0)) { confetti(160); crowdCheer(1); cheerT = performance.now() / 1000; cheerTeam = w; }
-    if (over && !inChamp) giveTrophy(tName(w), tCol(w), 'Vainqueur de la partie' + (perTeam() > 1 ? ' en doublette' : ''), 'Score final : ' + scores[w] + ' - ' + scores[1 - w] + '.');
+    if (over && !inChamp) giveTrophy(tName(w), tCol(w), 'Vainqueur de la partie' + (perTeam() > 1 ? ' en ' + FMT_NAME[cfg.format] : ''), 'Score final : ' + scores[w] + ' - ' + scores[1 - w] + '.');
   };
   later(() => over ? ceremony('end', showEnd) : showEnd(), 1300);
 }
@@ -1719,7 +1729,7 @@ function aiPlay() {
   if (!isAITurn()) return;
   if (cfg.mode === 'atelier') {
     if (phase !== 'aim') return;
-    const tg = atel.target, sk = isMulti() ? [0, 0.45, 0.65, 0.85][atel.players[current].ai] : comp ? comp.skill[cfg.team[current]] : 0.6;
+    const tg = atel.target, sk = isMulti() ? [0, 0.45, 0.65, 0.85][atel.players[current].ai] : atel.shooters && atel.shooters[current] ? atel.shooters[current].sk : 0.6;
     const fig = ATELIERS[atel.seq[atel.idx].a].fig;
     // point de chute visé : sur la cible, et toujours derrière la ligne de l'obstacle quand il y en a une
     const aimY = Math.max(tg.y - tg.r * 0.5, atel.line + 0.08);
@@ -1778,9 +1788,9 @@ function aiPlay() {
       tx -= 0.5 * t.slope[0] * tr * tr * 0.85;
     }
   }
-  // doublette : on s'entend, le tireur tire et le pointeur pointe (si chacun a encore des boules)
+  // doublette, triplette : on s'entend, le tireur tire et le pointeur pointe ; le milieu complète
   if (perTeam() > 1 && !swapAnim && performance.now() - lastAISwap > 2500) {
-    const want0 = type === 'tir' ? 1 : 0, want = pRem[me][want0] > 0 ? want0 : 1 - want0;
+    const want = Math.max(0, firstWithBalls(me, type === 'tir' ? [1, 2, 0] : [0, 2, 1]));
     if (want !== curP[me]) {   // on change de joueur : on le voit entrer dans le cercle, puis il lance
       swapAnim = {t: 0, dur: 0.9, out: curP[me]}; curP[me] = want; updateHUD(); lastAISwap = performance.now();
       return later(aiPlay, 1000);
@@ -2030,6 +2040,10 @@ function drawSideline() {
       const q = sideSpot(i, jack.y);
       person(q.x, q.y, {h: 1.74, ph: i + 3, skin: '#6b3e22', hair: 'cap', shirt: tCol(op), nojump: true});
     }
+  }
+  if (perTeam() > 2 && phase !== 'menEnd') {   // triplette : le troisième attend un peu plus loin
+    const w2 = {x: CIRCLE.x - 1.75, y: 0.5};
+    person(w2.x, w2.y, {h: 1.74, ph: 2, skin: '#5d3a20', hair: 'cap', shirt: tCol(current), nojump: true});
   }
   if (perTeam() > 1) {
     const w = WAIT();
@@ -2419,11 +2433,16 @@ $('cPortee').onclick = () => { const k = Object.keys(PORTEES); portee = k[(k.ind
 $('cEffet').onclick = () => { effet = effet === 0 ? 1 : effet === 1 ? -1 : 0; refreshChips(); };
 $('cTir').onclick = () => { const k = Object.keys(TIRS); tirStyle = k[(k.indexOf(tirStyle) + 1) % k.length]; refreshChips(); };
 $('cPos').onclick = () => { stance = stance === 'debout' ? 'accroupi' : 'debout'; refreshChips(); };
-// entente : faire venir l'autre joueur de la doublette au cercle
+// entente : faire venir un autre joueur de l'équipe au cercle (en triplette, on passe au suivant)
+function nextMate(t) {
+  const ord = perTeam() === 3 ? [0, 2, 1] : perTeam() === 2 ? [0, 1] : [0], p = ord.indexOf(curP[t]);   // pointeur, milieu, tireur
+  for (let k = 1; k < ord.length; k++) { const i = ord[(p + k) % ord.length]; if (pRem[t][i] > 0) return i; }
+  return -1;
+}
 $('cWho').onclick = () => {
   if (perTeam() < 2 || phase !== 'aim' || isAITurn() || charge || swapAnim) return;
-  const o = 1 - curP[current];
-  if (pRem[current][o] === 0) return;
+  const o = nextMate(current);
+  if (o < 0) return;
   const before = throwerName(current);
   swapAnim = {t: 0, dur: 0.9, out: curP[current]};
   curP[current] = o;
@@ -2452,7 +2471,7 @@ let atel = null, comp = null;
 const newScore = () => ({s: 0, n5: 0, n3: 0, n1: 0, log: []});
 
 // kind : 'train' (entraînement), 'solo' (qualification), 'duel' (face-à-face à tour de rôle)
-function startSeries(kind, onEnd, players, dists) {
+function startSeries(kind, onEnd, players, dists, shooters) {
   audio(); gen++; paused = false;
   cfg.mode = 'atelier'; cfg.terrain = 0;
   dists = (dists || [6, 7, 8, 9]).slice().sort((a, b) => a - b);   // toujours de la plus petite à la plus grande
@@ -2460,13 +2479,13 @@ function startSeries(kind, onEnd, players, dists) {
   const seq = [];
   for (let a = 0; a < ATELIERS.length; a++) for (const d of dists) for (let w = 0; w < n; w++) seq.push({a, d, who: w});
   atel = {kind, seq, idx: 0, sc: Array.from({length: Math.max(2, n)}, newScore), barrage: false, bsc: Array(Math.max(2, n)).fill(0), bPairs: 0,
-    onEnd, contacts: [], players: players || null, dists, n, total: ATELIERS.length * dists.length};
+    onEnd, contacts: [], players: players || null, shooters: shooters || null, dists, n, total: ATELIERS.length * dists.length};
   hideScreens();
   document.body.classList.toggle('multi', !!players);
   resize();
   $('hud').classList.remove('hidden'); $('multiBoard').classList.toggle('hidden', !players);
   scores = [0, 0]; menNo = 0; parts = []; pop = null;
-  flow = {restart: () => startSeries(kind, onEnd, players, dists),
+  flow = {restart: () => startSeries(kind, onEnd, players, dists, shooters),
           quit: kind === 'multi' ? () => { document.body.classList.remove('multi'); show('scrMulti'); } : kind === 'train' || (cfg.watch && cfg.watch.type === 'demo') ? goTitle : showComp};
   balls = []; jack = null; atel.center = null;
   if (kind === 'duel' || kind === 'multi') ceremony('start', setupShot); else setupShot();
@@ -2686,13 +2705,45 @@ function multiEnd(at) {
 }
 
 // ----- Compétition : qualification en solo, puis phase finale en face-à-face -----
-const ROUNDS = ['Huitièmes de finale', 'Quarts de finale', 'Demi-finales', 'Finale'];
-const SEED_PAIRS = [[1, 16], [8, 9], [4, 13], [5, 12], [2, 15], [7, 10], [3, 14], [6, 11]];
+// Deux catégories : Nationale (chaque équipe présente 1 tireur) et Départemental (jusqu'à 4 tireurs par équipe).
+// Le joueur ne tire que pour UN tireur de son équipe ; ses coéquipiers sont joués par l'ordinateur.
+const tirCfg = Object.assign({name: '', cat: 'nat', n: 4, mates: []}, (() => { try { return JSON.parse(localStorage.getItem('petanque_tir')) || {}; } catch (e) { return {}; } })());
+const saveTir = () => { try { localStorage.setItem('petanque_tir', JSON.stringify(tirCfg)); } catch (e) {} };
+const FIRST = ['Gloire', 'Merveille', 'Christ', 'Exaucé', 'Prince', 'Divin', 'Junior', 'Grâce', 'Chancel', 'Rodrigue', 'Ulrich', 'Fiston', 'Destin',
+  'Bienvenu', 'Dieudonné', 'Arnaud', 'Brice', 'Hervé', 'Jordan', 'Patrick', 'Landry', 'Rock', 'Guy', 'Nathan', 'Prestige', 'Josué', 'Cédric',
+  'Freddy', 'Gédéon', 'Hardy', 'Jessé', 'Mermoz', 'Varel', 'Stève', 'Jean', 'Paul', 'Alain', 'Romaric', 'Aimé', 'Sylvère'];
+const LAST = ['Mabiala', 'Moukoko', 'Nkounkou', 'Bouesso', 'Massamba', 'Mavoungou', 'Ngoma', 'Samba', 'Loubaki', 'Malonga', 'Mpassi', 'Bakala',
+  'Kimbembe', 'Ondongo', 'Okemba', 'Itoua', 'Mouanda', 'Nzaba', 'Kibangou', 'Tchicaya', 'Makosso', 'Mbani', 'Ndinga', 'Ganga', 'Louzolo', 'Biyoudi'];
+function shooterNames(n) {
+  const used = new Set(), out = [];
+  while (out.length < n) { const x = FIRST[Math.floor(Math.random() * FIRST.length)] + ' ' + LAST[Math.floor(Math.random() * LAST.length)]; if (!used.has(x)) { used.add(x); out.push(x); } }
+  return out;
+}
+// tableau à élimination directe : 1 contre le dernier, 2 contre l'avant-dernier... répartis pour ne se croiser qu'en finale
+function seedOrder(n) { let o = [1, 2]; while (o.length < n) { const m = o.length * 2 + 1; o = o.flatMap(x => [x, m - x]); } return o; }
+const ROUND_NAMES = {32: 'Seizièmes de finale', 16: 'Huitièmes de finale', 8: 'Quarts de finale', 4: 'Demi-finales', 2: 'Finale'};
 
 function startComp() {
-  comp = {me: cfg.team[0], skill: TEAMS.map(() => 0.45 + Math.random() * 0.4), stage: 'qualif', qual: null, rounds: [], cur: 0, myOut: false};
+  const cat = tirCfg.cat, myClub = cfg.team[0], E = [];
+  const myName = (tirCfg.name || '').trim() || TEAMS[myClub].n;
+  TEAMS.forEach((t, c) => {
+    const k = cat === 'nat' ? 1 : c === myClub ? tirCfg.n : 2 + Math.floor(Math.random() * 3);   // 1 en Nationale, 2 à 4 en Départemental
+    const gen_ = shooterNames(k);
+    for (let j = 0; j < k; j++) {
+      let n = gen_[j];
+      if (c === myClub) n = j === 0 ? myName : ((tirCfg.mates[j - 1] || '').trim() || n);
+      E.push({c, n, sk: 0.45 + Math.random() * 0.4, me: c === myClub && j === 0});
+    }
+  });
+  const field = E.length >= 40 ? 32 : 16;
+  comp = {cat, E, me: E.findIndex(e => e.me), field, stage: 'qualif', qual: null, rounds: [], cur: 0, myOut: false,
+    names: Array.from({length: Math.log2(field)}, (_, r) => ROUND_NAMES[field >> r])};
   showComp();
 }
+const cE = i => comp.E[i];
+const cNm = i => cE(i).n;
+const cFull = i => cE(i).n + ' (' + TEAMS[cE(i).c].n + ')';
+const shooterOf = i => ({n: cE(i).n, sk: cE(i).sk});
 
 function simSeries(sk) {
   const r = {s: 0, n5: 0, n3: 0};
@@ -2705,25 +2756,28 @@ function simSeries(sk) {
 
 function qualEnd(at) {
   const mine = at.sc[0];
-  comp.qual = TEAMS.map((t, i) => Object.assign({i}, i === comp.me ? {s: mine.s, n5: mine.n5, n3: mine.n3} : simSeries(comp.skill[i])))
+  comp.qual = comp.E.map((e, i) => Object.assign({i}, i === comp.me ? {s: mine.s, n5: mine.n5, n3: mine.n3} : simSeries(e.sk)))
     .sort((x, y) => y.s - x.s || y.n5 - x.n5 || y.n3 - x.n3 || Math.random() - .5);
-  const seeds = comp.qual.slice(0, 16).map(q => q.i);
-  comp.rounds = [SEED_PAIRS.map(([a, b]) => ({a: seeds[a - 1], b: seeds[b - 1]}))];
+  const seeds = comp.qual.slice(0, comp.field).map(q => q.i), ord = seedOrder(comp.field);
+  const R = [];
+  for (let k = 0; k < ord.length; k += 2) R.push({a: seeds[ord[k] - 1], b: seeds[ord[k + 1] - 1]});
+  comp.rounds = [R];
   comp.cur = 0; comp.stage = 'final';
   comp.myOut = !seeds.includes(comp.me);
   showComp();
 }
 
 function simDuel(m) {
-  m.sa = simSeries(comp.skill[m.a]).s; m.sb = simSeries(comp.skill[m.b]).s;
-  if (m.sa === m.sb) { m.bar = true; m.w = Math.random() < comp.skill[m.a] / (comp.skill[m.a] + comp.skill[m.b]) ? m.a : m.b; }
+  const A = cE(m.a).sk, B = cE(m.b).sk;
+  m.sa = simSeries(A).s; m.sb = simSeries(B).s;
+  if (m.sa === m.sb) { m.bar = true; m.w = Math.random() < A / (A + B) ? m.a : m.b; }
   else m.w = m.sa > m.sb ? m.a : m.b;
 }
 
 function advance() {   // termine le tour en cours et prépare le suivant
   const R = comp.rounds[comp.cur];
   R.forEach(m => { if (m.w === undefined) simDuel(m); });
-  if (comp.cur === ROUNDS.length - 1) { comp.stage = 'done'; return; }
+  if (comp.cur === comp.names.length - 1) { comp.stage = 'done'; return; }
   const next = [];
   for (let k = 0; k < R.length; k += 2) next.push({a: R[k].w, b: R[k + 1].w});
   comp.rounds.push(next); comp.cur++;
@@ -2749,67 +2803,76 @@ function showComp() {
   hideScreens(); $('hud').classList.add('hidden'); $('controls').classList.add('hidden'); document.body.classList.remove('multi');
   setMsg(''); phase = 'menu'; scores = null; resize();
   $('comp').classList.remove('hidden');
-  const me = comp.me, N = TEAMS[me].n, nm = i => TEAMS[i].n, play = $('cpPlay');
+  const me = comp.me, N = cNm(me), myClub = cE(me).c, play = $('cpPlay');
+  const catTxt = comp.cat === 'nat' ? 'Nationale' : 'Départemental';
+  const mate = i => cE(i).c === myClub && i !== me;   // coéquipier joué par l'ordinateur
+  const nmH = i => '<span style="color:' + TEAMS[cE(i).c].c + ';font-weight:900">' + cNm(i).replace(/</g, '&lt;') + '</span> <small style="color:var(--mute)">' + TEAMS[cE(i).c].n + '</small>';
   play.classList.remove('hidden');
   let body = '';
   if (comp.stage === 'qualif') {
-    $('cpTitle').textContent = 'Tir de précision - Qualifications';
-    $('cpSub').innerHTML = TEAMS.length + ' équipes. Chaque équipe tire seule une série de 20 boules (5 ateliers à 6, 7, 8 et 9 m).<br>Les <b>16 meilleures</b> vont en huitièmes de finale, en face-à-face.';
+    $('cpTitle').textContent = 'Tir de précision ' + catTxt + ' - Qualifications';
+    const nMine = comp.E.filter(e => e.c === myClub).length;
+    $('cpSub').innerHTML = comp.E.length + ' tireurs, ' + TEAMS.length + ' équipes' + (comp.cat === 'dep' ? ' (jusqu\'à 4 tireurs par équipe)' : ' (1 tireur par équipe)') +
+      '. Chaque tireur tire seul une série de 20 boules (5 ateliers à 6, 7, 8 et 9 m).<br>Les <b>' + comp.field + ' meilleurs</b> vont en ' + comp.names[0].toLowerCase() + ', en face-à-face.' +
+      (nMine > 1 ? '<br>Vous tirez pour <b>' + N.replace(/</g, '&lt;') + '</b> ; l\'ordinateur tire pour vos ' + (nMine - 1) + ' coéquipiers.' : '');
     play.textContent = 'Tirer la série de ' + N;
-    play.onclick = () => { userPlay(); cfg.team = [me, (me + 1) % TEAMS.length]; startSeries('solo', qualEnd); };
+    play.onclick = () => { userPlay(); cfg.team = [myClub, (myClub + 1) % TEAMS.length]; startSeries('solo', qualEnd, null, null, [shooterOf(me), {n: '', sk: 0.6}]); };
   } else {
     if (comp.stage === 'done') {
-      const F = comp.rounds[ROUNDS.length - 1][0];
-      $('cpTitle').innerHTML = '<svg class="ic"><use href="#i-trophy"/></svg> Vainqueur : ' + nm(F.w);
-      $('cpSub').textContent = F.w === me ? 'Bravo, ' + N + ' remporte le tir de précision !' : 'Finaliste : ' + nm(F.w === F.a ? F.b : F.a);
+      const F = comp.rounds[comp.names.length - 1][0];
+      $('cpTitle').innerHTML = '<svg class="ic"><use href="#i-trophy"/></svg> Vainqueur : ' + cNm(F.w).replace(/</g, '&lt;');
+      $('cpSub').textContent = F.w === me ? 'Bravo, ' + N + ' remporte le tir de précision ' + catTxt + ' !'
+        : mate(F.w) ? 'Victoire de votre coéquipier ' + cNm(F.w) + ' pour ' + TEAMS[myClub].n + ' !' : 'Finaliste : ' + cFull(F.w === F.a ? F.b : F.a);
       play.classList.add('hidden');
-      if (!comp.trophy) { comp.trophy = true; giveTrophy(nm(F.w), TEAMS[F.w].c, 'Vainqueur de la compétition de tir de précision',
-        'Finale : ' + nm(F.a) + ' ' + F.sa + ' - ' + F.sb + ' ' + nm(F.b) + (F.w === me ? '. Bravo !' : '')); }
+      if (!comp.trophy) { comp.trophy = true; giveTrophy(cNm(F.w), TEAMS[cE(F.w).c].c, 'Vainqueur du tir de précision ' + catTxt + ' - ' + TEAMS[cE(F.w).c].n,
+        'Finale : ' + cNm(F.a) + ' ' + F.sa + ' - ' + F.sb + ' ' + cNm(F.b) + (F.w === me ? '. Bravo !' : '')); }
     } else {
-      $('cpTitle').textContent = ROUNDS[comp.cur];
+      $('cpTitle').textContent = comp.names[comp.cur] + ' - ' + catTxt;
       const m = myMatch();
       if (m) {
         const opp = m.a === me ? m.b : m.a;
-        $('cpSub').innerHTML = 'Face-à-face : <b>' + N + '</b> contre <b>' + nm(opp) + '</b> (ordi).<br>Vous tirez à tour de rôle sur chaque distance de chaque atelier. Le meilleur total se qualifie.';
+        $('cpSub').innerHTML = 'Face-à-face : <b>' + N.replace(/</g, '&lt;') + '</b> contre <b>' + cFull(opp).replace(/</g, '&lt;') + '</b> (ordi).<br>Vous tirez à tour de rôle sur chaque distance de chaque atelier. Le meilleur total se qualifie.';
         play.textContent = 'Jouer le face-à-face';
-        play.onclick = () => { userPlay(); cfg.team = [me, opp]; startSeries('duel', duelEnd); };
+        play.onclick = () => { userPlay(); cfg.team = [myClub, cE(opp).c]; startSeries('duel', duelEnd, null, null, [shooterOf(me), shooterOf(opp)]); };
         $('cpSub').innerHTML += '<br><span style="font-size:13px">Vous pouvez aussi regarder les autres face-à-face du tour.</span>';
       } else {
-        $('cpSub').textContent = comp.myOut ? N + ' est éliminée. Regardez les face-à-face de votre choix, ou passez directement au tour suivant.' : '';
+        const left = comp.rounds[comp.cur].some(x => x.w === undefined && (mate(x.a) || mate(x.b)));
+        $('cpSub').textContent = (comp.myOut ? N + ' est éliminé. ' : '') + (left ? 'Vos coéquipiers sont encore en course (joués par l\'ordinateur). ' : '') + 'Regardez les face-à-face de votre choix, ou passez au tour suivant.';
         play.textContent = 'Voir le tour suivant';
         play.onclick = () => { advance(); showComp(); };
       }
     }
     // Tableau final
     comp.rounds.forEach((R, r) => {
-      body += '<div class="bk"><b>' + ROUNDS[r] + '</b><br>' + R.map(m => {
-        const A = (m.w === m.a ? '<b class="w">' : '') + nm(m.a) + (m.w === m.a ? '</b>' : ''), B = (m.w === m.b ? '<b class="w">' : '') + nm(m.b) + (m.w === m.b ? '</b>' : '');
+      body += '<div class="bk"><b>' + comp.names[r] + '</b><br>' + R.map(m => {
+        const A = (m.w === m.a ? '<b class="w">' : '') + nmH(m.a) + (m.w === m.a ? '</b>' : ''), B = (m.w === m.b ? '<b class="w">' : '') + nmH(m.b) + (m.w === m.b ? '</b>' : '');
         const sc = m.w === undefined ? ' contre ' : ' ' + m.sa + ' - ' + m.sb + (m.bar ? ' (barrage)' : '') + (m.cut ? ' (arrêté)' : '') + ' ';
         const k = R.indexOf(m), watch = r === comp.cur && comp.stage === 'final' && m.w === undefined && m.a !== me && m.b !== me;
         const line = A + sc + B + (watch ? ' <button class="wbtn" data-k="' + k + '">Regarder</button>' : '');
-        return (m.a === me || m.b === me) ? '<span style="background:rgba(242,235,221,.1);padding:1px 4px;border-radius:4px">' + line + '</span>' : line;
+        return (m.a === me || m.b === me || mate(m.a) || mate(m.b)) ? '<span style="background:rgba(242,235,221,.1);padding:1px 4px;border-radius:4px">' + line + '</span>' : line;
       }).join('<br>') + '</div>';
     });
   }
   if (comp.qual) {
-    body += '<div class="bk"><b>Classement des qualifications</b></div><table class="tbl"><tr><th>#</th><th style="text-align:left">Équipe</th><th>Points</th><th>5</th><th>3</th><th></th></tr>';
+    body += '<div class="bk"><b>Classement des qualifications</b></div><table class="tbl"><tr><th>#</th><th style="text-align:left">Tireur</th><th>Points</th><th>5</th><th>3</th><th></th></tr>';
     comp.qual.forEach((q, k) => {
-      body += '<tr class="' + (q.i === me ? 'me' : '') + '"><td>' + (k + 1) + '</td><td class="tn"><i class="badge" style="background:' + TEAMS[q.i].c + '"></i> ' + nm(q.i) + '</td><td class="pts">' + q.s + '</td><td>' + q.n5 + '</td><td>' + q.n3 + '</td><td>' + (k < 16 ? '<svg class="ic"><use href="#i-check"/></svg>' : '') + '</td></tr>';
+      body += '<tr class="' + (q.i === me ? 'me' : '') + '"><td>' + (k + 1) + '</td><td class="tn"><i class="badge" style="background:' + TEAMS[cE(q.i).c].c + '"></i> ' + cNm(q.i).replace(/</g, '&lt;') +
+        ' <span style="color:var(--mute);font-weight:600;font-size:11px">' + TEAMS[cE(q.i).c].n + '</span></td><td class="pts">' + q.s + '</td><td>' + q.n5 + '</td><td>' + q.n3 + '</td><td>' + (k < comp.field ? '<svg class="ic"><use href="#i-check"/></svg>' : '') + '</td></tr>';
     });
     body += '</table>';
   }
   $('cpBody').innerHTML = body;
   $('cpBody').querySelectorAll('.wbtn').forEach(b => b.onclick = () => watchDuel(comp.rounds[comp.cur][+b.dataset.k]));
 }
-// regarder un face-à-face entre deux équipes de l'ordinateur
+// regarder un face-à-face entre deux tireurs joués par l'ordinateur
 function watchDuel(m) {
-  cfg.spectate = true; cfg.watch = {type: 'comp', m}; cfg.team = [m.a, m.b];
+  cfg.spectate = true; cfg.watch = {type: 'comp', m}; cfg.team = [cE(m.a).c, cE(m.b).c];
   startSeries('duel', at => {
     m.sa = at.sc[0].s; m.sb = at.sc[1].s;
     if (at.barrage) m.bar = true; if (at.cut) m.cut = true;
     m.w = (m.sa > m.sb || (m.sa === m.sb && at.bsc[0] > at.bsc[1])) ? m.a : m.b;
     userPlay(); showComp();
-  });
+  }, null, null, [shooterOf(m.a), shooterOf(m.b)]);
 }
 $('cpMenu').onclick = goTitle;
 
@@ -2884,7 +2947,7 @@ function showChamp() {
     $('chNext').textContent = ''; $('chPlay').classList.add('hidden');
   } else {
     $('chTitle').textContent = 'Championnat - Journée ' + (champ.round + 1) + ' / ' + n;
-    $('chSub').textContent = (champ.format === 'doublette' ? 'Doublettes' : 'Tête-à-tête') + ' en ' + champ.win + ' points · victoire = 3 pts · terrain choisi au tirage';
+    $('chSub').textContent = ({doublette: 'Doublettes', triplette: 'Triplettes'}[champ.format] || 'Tête-à-tête') + ' en ' + champ.win + ' points · victoire = 3 pts · terrain choisi au tirage';
     const m = userMatch();
     $('chPlay').classList.remove('hidden');
     if (m) {
@@ -3003,13 +3066,13 @@ $('goAbout').onclick = () => show('scrAbout');
 
 const DIFFS = [[0, 'Facile'], [1, 'Normal'], [2, 'Expert']];
 const WINS = [[9, '9 points'], [11, '11 points'], [13, '13 points']];
-const FORMATS = [['tat', 'Tête-à-tête', '1 joueur · 3 boules'], ['doublette', 'Doublette', '2 joueurs · 6 boules']];
+const FORMATS = [['tat', 'Tête-à-tête', '1 joueur · 3 boules'], ['doublette', 'Doublette', '2 joueurs · 6 boules'], ['triplette', 'Triplette', '3 joueurs · 6 boules']];
 const RENDER = {
   scrMatch() {
     segUI('segFmt', FORMATS, () => cfg.format, v => { cfg.format = v; RENDER.scrMatch(); });
     for (const t of [0, 1]) {
       const box = $('names' + t); box.innerHTML = '';
-      for (let i = 0; i < perTeam(); i++) {
+      for (const i of perTeam() === 3 ? [0, 2, 1] : [0, 1].slice(0, perTeam())) {   // pointeur, (milieu), tireur
         const inp = document.createElement('input');
         inp.maxLength = 16; inp.autocomplete = 'off'; inp.value = cfg.names[t][i] || '';
         inp.placeholder = perTeam() > 1 ? 'Nom du ' + ROLES[i] : 'Nom du joueur';
@@ -3033,7 +3096,21 @@ const RENDER = {
     $('bChampGo').textContent = ok ? (sv.done ? 'Voir le classement final' : 'Continuer (journée ' + (sv.round + 1) + ')') : 'Lancer le championnat';
     $('bChampNew').classList.toggle('hidden', !ok);
   },
-  scrTir() { teamCard('pickT', cfg.team[0]); teamCard('pickT2', cfg.team[1]); },
+  scrTir() {
+    teamCard('pickT', cfg.team[0]); teamCard('pickT2', cfg.team[1]);
+    $('tirName').value = tirCfg.name; $('tirName').oninput = () => { tirCfg.name = $('tirName').value; saveTir(); };
+    segUI('segCat', [['nat', 'Nationale', '1 tireur par équipe'], ['dep', 'Départemental', 'jusqu\'à 4 tireurs par équipe']], () => tirCfg.cat, v => { tirCfg.cat = v; saveTir(); RENDER.scrTir(); });
+    $('rowMates').classList.toggle('hidden', tirCfg.cat !== 'dep');
+    segUI('segMates', [[2, '2'], [3, '3'], [4, '4']], () => tirCfg.n, v => { tirCfg.n = v; saveTir(); RENDER.scrTir(); });
+    const box = $('mateNames'); box.innerHTML = '';
+    for (let i = 0; i < tirCfg.n - 1; i++) {
+      const inp = document.createElement('input');
+      inp.maxLength = 16; inp.autocomplete = 'off'; inp.value = tirCfg.mates[i] || ''; inp.placeholder = 'Coéquipier ' + (i + 2) + ' (ordi)';
+      inp.style.flex = '1 1 40%';
+      inp.oninput = () => { tirCfg.mates[i] = inp.value; saveTir(); };
+      box.appendChild(inp);
+    }
+  },
   scrHow() { $('howTerrains').innerHTML = TERRAINS.map((t, i) => '<div class="tcard"><img src="' + terrainThumb(i) + '" alt=""><b>' + t.n + '</b><small>' + t.d + '</small></div>').join(''); },
   scrMulti() { renderPlayers(); segUI('segLen', [['full', 'Complète', '20 tirs · 6 à 9 m'], ['short', 'Courte', '5 tirs · à 7 m']], () => multiLen, v => multiLen = v); },
   scrOptions() {
