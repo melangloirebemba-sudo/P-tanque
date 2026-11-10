@@ -1169,11 +1169,14 @@ function buildCrowd() {
 }
 const referee = () => {
   if (cfg.mode === 'atelier' && atel && atel.center) return LAND ? {x: W + 0.55, y: atel.center.y} : {x: W + 0.75, y: atel.center.y};   // à hauteur du cercle des cibles
+  // côté droit du terrain, en face du public (en paysage : le bord du bas, quel que soit le sens du jeu)
   const b = BND();
-  return LAND ? {x: W - 0.7, y: b.y1 + 0.75} : {x: b.x1 + 0.7, y: 6.0};
+  return LAND ? {x: flipV ? b.x0 - 0.65 : b.x1 + 0.65, y: 6.0} : {x: b.x1 + 0.7, y: 6.0};
 };
 // place d'un adversaire qui attend : du côté de l'arbitre, où il n'y a pas de public
-const sideSpot = (i, jy) => { const b = BND(); return LAND ? {x: 0.7 + i * 0.75, y: b.y1 + 0.55} : {x: b.x1 + 0.42, y: Math.min(b.y1 + 0.6, jy + 0.6 + i * 0.65)}; };
+// adversaires qui attendent : sur le bord droit, sans public, un peu après le cochonnet (pour ne pas le cacher)
+const sideSpot = (i, jy) => { const b = BND(), y = Math.min(b.y1 + 0.6, jy + 0.7 + i * 0.7);
+  return LAND ? {x: flipV ? b.x0 - 0.45 : b.x1 + 0.45, y} : {x: b.x1 + 0.42, y}; };
 // chaque supporter appartient à une équipe (celle de son maillot) ; dans les menus, personne ne célèbre
 const crowdTeam = i => (phase === 'menu' || !scores) ? -9 : isMulti() ? i % atel.n : i % 2;
 function crowdColor(i) {
@@ -1300,11 +1303,10 @@ function person(x, y, opt) {
   ctx.restore();
 }
 function drawCrowd() {
-  const fl = flipV; flipV = false;
-  try { drawCrowd0(fl); } finally { flipV = fl; }
+  const fl = flipV, ref0 = referee(); flipV = false;
+  try { drawCrowd0(fl, ref0); } finally { flipV = fl; }
 }
-function drawCrowd0(fl) {
-  let ref = referee();
+function drawCrowd0(fl, ref) {
   if (fl) ref = {x: W - ref.x, y: L - ref.y};
   const items = crowd.map(c => ({x: c.x, y: c.y, o: {h: c.h, ph: c.ph, skin: c.skin, hair: c.hair, shirt: crowdColor(c.i), team: crowdTeam(c.i)}}));
   const showBoard = cfg.mode === 'atelier' && atel && atel.lastPts !== undefined && performance.now() - atel.lastT < 2600;
@@ -2131,8 +2133,9 @@ function heldBall(x, y, sc) {
 
 const isCrouched = () => cfg.mode !== 'atelier' && (anim ? crouchAnim : phase === 'aim' && !isAITurn() && stance === 'accroupi' && !(charge && charge.type === 'tir'));
 // les partenaires attendent à l'extérieur du terrain, à hauteur du cercle (côté public, jamais sur le jeu)
-const mateX = () => { const b = BND(); return flipV ? b.x1 + 0.45 : b.x0 - 0.45; };
-const WAIT = () => ({x: mateX(), y: CIRCLE.y + 0.15});
+// (en portrait, un peu en avant du cercle pour rester dans l'image)
+const mateX = () => { const b = BND(); return !LAND ? b.x0 - 0.22 : flipV ? b.x1 + 0.45 : b.x0 - 0.45; };
+const WAIT = () => ({x: mateX(), y: CIRCLE.y + (LAND ? 0.15 : 1.3)});
 const lerp = (a, b, k) => a + (b - a) * k;
 function playerPos() {
   if (!swapAnim) return {x: CIRCLE.x, y: CIRCLE.y};
@@ -2150,7 +2153,7 @@ function drawSideline() {
     }
   }
   if (perTeam() > 2 && phase !== 'menEnd') {   // triplette : le troisième attend un peu plus loin
-    const w2 = {x: mateX() + (flipV ? 0.35 : -0.35), y: CIRCLE.y - 0.55};
+    const w2 = LAND ? {x: mateX() + (flipV ? 0.35 : -0.35), y: CIRCLE.y - 0.55} : {x: mateX() - 0.1, y: CIRCLE.y + 2.15};
     person(w2.x, w2.y, {h: 1.74, ph: 2, skin: '#5d3a20', hair: 'cap', shirt: tCol(current), nojump: true});
   }
   if (perTeam() > 1) {
